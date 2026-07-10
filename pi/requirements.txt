@@ -1,0 +1,3 @@
+paho-mqtt>=2.0
+# GPIO制御を使う場合(Raspberry Pi上でのみ):
+# RPi.GPIO>=0.7
