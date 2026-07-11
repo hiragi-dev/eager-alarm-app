@@ -1,19 +1,28 @@
+export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+
 /** eager-alarm-edge の `eager-alarm/<id>/alarms` トピックで返される1件のアラーム */
 export type Alarm = {
   id: string;
-  wakeup_time: string;
+  time: string; // "HH:MM"
+  days_of_week: DayOfWeek[];
+  is_enabled: boolean;
 };
 
 export type AlarmCommand =
-  | { type: "add"; wakeup_time: string }
+  | { type: "add"; time: string; days_of_week: DayOfWeek[]; is_enabled: boolean }
+  | { type: "edit"; id: string; time: string; days_of_week: DayOfWeek[]; is_enabled: boolean }
   | { type: "delete"; id: string }
   | { type: "list" }
   | { type: "pause"; duration_ms: number }
   | { type: "stop" }
   | { type: "status" };
 
-export function buildAddCommand(wakeupTime: string): AlarmCommand {
-  return { type: "add", wakeup_time: wakeupTime };
+export function buildAddCommand(time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean): AlarmCommand {
+  return { type: "add", time, days_of_week: daysOfWeek, is_enabled: isEnabled };
+}
+
+export function buildEditCommand(id: string, time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean): AlarmCommand {
+  return { type: "edit", id, time, days_of_week: daysOfWeek, is_enabled: isEnabled };
 }
 
 export function buildDeleteCommand(id: string): AlarmCommand {
@@ -24,54 +33,44 @@ export function buildListCommand(): AlarmCommand {
   return { type: "list" };
 }
 
-/**
- * 鳴動中のアラームを durationMs だけ一時停止するコマンド。
- * 歩行検知中に一定間隔で再送することで、歩行が続く限り停止状態を延長する想定
- * （eager-alarm-edge 側は明示的な resume を待たず、durationMs 経過で自動的に鳴動を再開する）。
- */
 export function buildPauseCommand(durationMs: number): AlarmCommand {
   return { type: "pause", duration_ms: durationMs };
 }
 
-/** 鳴動中のアラームを完全に停止するコマンド（durationによる自動再開は無し） */
 export function buildStopCommand(): AlarmCommand {
   return { type: "stop" };
 }
 
-/**
- * edgeデバイスの生存確認コマンド。`status` トピックへの応答(publish)の有無で
- * オンライン/オフラインを判定する想定（MQTTブローカーへの接続状況とは別に扱う）。
- * eager-alarm-edge 側にはまだ実装されていないが、既定APIとして扱う。
- */
 export function buildStatusCommand(): AlarmCommand {
   return { type: "status" };
 }
 
-/**
- * `<input type="datetime-local">` の値（"YYYY-MM-DDTHH:mm" または "...:ss"）を、
- * eager-alarm-edge が受け付ける "YYYY-MM-DD HH:MM:SS" 形式（デバイスのローカル時刻として解釈される）に変換する。
- */
-export function datetimeLocalToWakeupTime(value: string): string {
-  const withSeconds = value.length === 16 ? `${value}:00` : value;
-  return withSeconds.replace("T", " ");
+/** 時刻が早い順に並べ替える ("HH:MM" 形式の文字列比較) */
+export function sortAlarmsByTime(alarms: Alarm[]): Alarm[] {
+  return [...alarms].sort((a, b) => a.time.localeCompare(b.time));
 }
 
-/** RFC3339（オフセット付き）と "YYYY-MM-DD HH:MM:SS" のどちらも Date に変換できるようにする */
-function parseWakeupTime(wakeupTime: string): Date {
-  const iso = wakeupTime.includes("T") ? wakeupTime : wakeupTime.replace(" ", "T");
-  return new Date(iso);
-}
+/** 曜日を日本語表記にフォーマットする */
+export function formatDaysOfWeek(days: DayOfWeek[]): string {
+  if (days.length === 0) return "なし";
+  if (days.length === 7) return "毎日";
 
-/** 一覧表示用に読みやすい形式へ整形する。パース不能な場合は元の文字列を返す */
-export function formatWakeupTime(wakeupTime: string): string {
-  const d = parseWakeupTime(wakeupTime);
-  if (Number.isNaN(d.getTime())) return wakeupTime;
-  return d.toLocaleString("ja-JP", { hour12: false });
-}
+  const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const weekend = ["Sat", "Sun"];
 
-/** 起床時刻が早い順に並べ替える（デバイス側は既にソート済みだが表示側でも保証する） */
-export function sortAlarmsByWakeupTime(alarms: Alarm[]): Alarm[] {
-  return [...alarms].sort(
-    (a, b) => parseWakeupTime(a.wakeup_time).getTime() - parseWakeupTime(b.wakeup_time).getTime(),
-  );
+  const isWeekdays = weekdays.every(d => days.includes(d as DayOfWeek)) && days.length === 5;
+  if (isWeekdays) return "平日";
+
+  const isWeekend = weekend.every(d => days.includes(d as DayOfWeek)) && days.length === 2;
+  if (isWeekend) return "週末";
+
+  const map: Record<DayOfWeek, string> = {
+    Mon: "月", Tue: "火", Wed: "水", Thu: "木", Fri: "金", Sat: "土", Sun: "日"
+  };
+
+  // 決まった順序で表示するためのソート
+  const order: DayOfWeek[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const sorted = [...days].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+
+  return sorted.map(d => map[d]).join(" ");
 }

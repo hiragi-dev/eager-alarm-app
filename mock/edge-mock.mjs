@@ -1,21 +1,18 @@
 #!/usr/bin/env node
 /**
- * eager-alarm-edge の挙動を模擬するモック。実機無しでアプリ側の
- * add/delete/list/pause/stop コマンドの往復・鳴動状態の遷移を確認するためのテストツール。
+ * eager-alarm-edge の挙動を模擬するモック (v2 API対応)。実機無しでアプリ側の
+ * add/edit/delete/list/pause/stop コマンドの往復・鳴動状態の遷移を確認するためのテストツール。
  *
  * 使い方:
  *   npm run mock:edge
  * （内部で `node --env-file=.env.local mock/edge-mock.mjs` を実行し、
  *   アプリと同じ .env.local の接続情報・デバイスIDを使う）
  *
- * 実装している状態遷移（現状の eager-alarm-edge にはまだ無い pause/stop/status も含む、
- * 合意済みAPI仕様の参照実装）:
- *   - スケジュール済みのアラームは wakeup_time 順に並べ、時刻が来たら「鳴動中」に遷移する
- *   - pause: muted_until を「上書き」で延長する（積算しない）。歩行検知中の再送を想定
- *   - stop: 鳴動中のアラームを完全に停止し、muted_until もクリアする
- *   - status: 生存確認コマンド。受信したら status トピックへ即座に応答する
- *     （アプリ側は応答の有無だけでオンライン/オフラインを判定するため、内容は最小限）
- *   - 鳴動中はハートビートログを一定間隔で出し、ミュート中は静かにする
+ * v2 変更点:
+ *   - アラームは `time` (HH:MM) + `days_of_week` + `is_enabled` で管理
+ *   - add: id はエッジ（モック）側で生成
+ *   - edit: 既存アラームを更新
+ *   - stop: アラームは削除しない。次回の曜日に再スケジュール
  */
 import { randomUUID } from "node:crypto";
 import mqtt from "mqtt";
@@ -40,10 +37,14 @@ const STATUS_TOPIC = `${TOPIC_PREFIX}/${DEVICE_ID}/status`;
 const TICK_MS = 500;
 const RINGING_HEARTBEAT_MS = 2000;
 
-/** @typedef {{ id: string, wakeupTime: Date }} Alarm */
+const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-/** @type {Alarm[]} 未鳴動のアラーム。常に wakeupTime 昇順を保つ */
-let schedule = [];
+/**
+ * @typedef {{ id: string, time: string, days_of_week: string[], is_enabled: boolean }} Alarm
+ */
+
+/** @type {Alarm[]} */
+let alarmList = [];
 /** @type {Alarm | null} 現在鳴動中のアラーム */
 let ringing = null;
 /** @type {Date | null} この時刻までは鳴動(への遷移・継続)を抑制する */
@@ -55,38 +56,44 @@ function log(...args) {
   console.log(`[${time}]`, ...args);
 }
 
-/** chrono の DateTime<Local> が RFC3339 で出力する形式（ローカルオフセット付き）に合わせる */
-function toLocalRfc3339(date) {
-  const pad = (n) => String(n).padStart(2, "0");
-  const offsetMin = -date.getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const offset = `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${offset}`
-  );
-}
+/**
+ * 次回の鳴動予定を計算する。
+ * 現在時刻から最も近い鳴動予定日時を返す。
+ * @param {Alarm} alarm
+ * @returns {Date | null}
+ */
+function nextRingDate(alarm) {
+  if (!alarm.is_enabled || alarm.days_of_week.length === 0) return null;
 
-/** RFC3339（オフセット付き）と "YYYY-MM-DD HH:MM:SS"（ローカル時刻扱い）のどちらも受け付ける */
-function parseWakeupTime(raw) {
-  const iso = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) throw new Error(`invalid wakeup_time: ${raw}`);
-  return d;
-}
+  const now = new Date();
+  const [h, m] = alarm.time.split(":").map(Number);
 
-function insertSorted(alarm) {
-  schedule.push(alarm);
-  schedule.sort((a, b) => a.wakeupTime.getTime() - b.wakeupTime.getTime());
-}
+  for (let offset = 0; offset < 8; offset++) {
+    const candidate = new Date(now);
+    candidate.setDate(candidate.getDate() + offset);
+    candidate.setHours(h, m, 0, 0);
 
-function serializeAlarms(alarms) {
-  return alarms.map((a) => ({ id: a.id, wakeup_time: toLocalRfc3339(a.wakeupTime) }));
+    // 今日の同じ時刻以降
+    if (candidate <= now) continue;
+
+    const dayName = Object.keys(DAY_MAP).find(k => DAY_MAP[k] === candidate.getDay());
+    if (alarm.days_of_week.includes(dayName)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 function publishAlarms(client) {
-  const payload = JSON.stringify(serializeAlarms(schedule));
+  // Serialize to v2 format
+  const payload = JSON.stringify(
+    alarmList.map(a => ({
+      id: a.id,
+      time: a.time,
+      days_of_week: a.days_of_week,
+      is_enabled: a.is_enabled,
+    }))
+  );
   client.publish(ALARMS_TOPIC, payload, { qos: 2 }, (err) => {
     if (err) log(`⚠ alarms送信失敗: ${err.message}`);
     else log(`→ ${ALARMS_TOPIC}: ${payload}`);
@@ -96,32 +103,53 @@ function publishAlarms(client) {
 function handleCommand(client, cmd) {
   switch (cmd.type) {
     case "add": {
-      try {
-        const wakeupTime = parseWakeupTime(cmd.wakeup_time);
-        const alarm = { id: randomUUID(), wakeupTime };
-        insertSorted(alarm);
-        log(`✅ add id=${alarm.id} wakeup_time=${toLocalRfc3339(wakeupTime)}`);
-      } catch (err) {
-        log(`⚠ add失敗: ${err.message}`);
+      if (!cmd.time || !Array.isArray(cmd.days_of_week)) {
+        log(`⚠ add: 不正なペイロード: ${JSON.stringify(cmd)}`);
+        break;
       }
+      const alarm = {
+        id: randomUUID(),
+        time: cmd.time,
+        days_of_week: cmd.days_of_week,
+        is_enabled: cmd.is_enabled ?? true,
+      };
+      alarmList.push(alarm);
+      alarmList.sort((a, b) => a.time.localeCompare(b.time));
+      log(`✅ add id=${alarm.id} time=${alarm.time} days=[${alarm.days_of_week.join(",")}]`);
+      break;
+    }
+    case "edit": {
+      const idx = alarmList.findIndex(a => a.id === cmd.id);
+      if (idx === -1) {
+        log(`⚠ edit: id=${cmd.id} は見つかりませんでした`);
+        break;
+      }
+      alarmList[idx] = {
+        id: cmd.id,
+        time: cmd.time ?? alarmList[idx].time,
+        days_of_week: cmd.days_of_week ?? alarmList[idx].days_of_week,
+        is_enabled: cmd.is_enabled ?? alarmList[idx].is_enabled,
+      };
+      alarmList.sort((a, b) => a.time.localeCompare(b.time));
+      log(`✅ edit id=${cmd.id} time=${alarmList[idx].time} enabled=${alarmList[idx].is_enabled}`);
       break;
     }
     case "delete": {
-      const before = schedule.length;
-      schedule = schedule.filter((a) => a.id !== cmd.id);
+      const before = alarmList.length;
+      alarmList = alarmList.filter(a => a.id !== cmd.id);
       if (ringing?.id === cmd.id) {
         log(`🛑 鳴動中のアラーム id=${cmd.id} が delete されたため停止します`);
         ringing = null;
       }
       log(
-        before === schedule.length
+        before === alarmList.length
           ? `⚠ delete: id=${cmd.id} は見つかりませんでした`
           : `✅ delete id=${cmd.id}`,
       );
       break;
     }
     case "list": {
-      log(`📋 list (${schedule.length}件)`);
+      log(`📋 list (${alarmList.length}件)`);
       publishAlarms(client);
       break;
     }
@@ -138,13 +166,14 @@ function handleCommand(client, cmd) {
       break;
     }
     case "stop": {
+      // v2: アラームは削除しない。ringing状態をクリアするだけ
       if (ringing) {
-        log(`🛑 stop: 鳴動中のアラーム id=${ringing.id} を完全停止しました`);
+        log(`🛑 stop: 鳴動中のアラーム id=${ringing.id} を停止しました（アラームは保持）`);
+        ringing = null;
+        mutedUntil = null;
       } else {
         log("🛑 stop: 現在鳴動中のアラームはありません");
       }
-      ringing = null;
-      mutedUntil = null;
       break;
     }
     case "status": {
@@ -164,13 +193,24 @@ function tick() {
   const now = new Date();
   const muted = mutedUntil != null && now < mutedUntil;
 
-  if (!ringing && schedule.length > 0 && !muted) {
-    const next = schedule[0];
-    if (now >= next.wakeupTime) {
-      ringing = next;
-      schedule = schedule.slice(1);
-      log(`🔔🔔🔔 ALARM RINGING id=${ringing.id} wakeup_time=${toLocalRfc3339(ringing.wakeupTime)}`);
-      lastHeartbeatAt = 0;
+  // 鳴動していない場合: 有効なアラームのうち鳴動時刻を過ぎたものを探す
+  if (!ringing && !muted) {
+    const nowH = now.getHours();
+    const nowM = now.getMinutes();
+    const nowDay = Object.keys(DAY_MAP).find(k => DAY_MAP[k] === now.getDay());
+
+    for (const alarm of alarmList) {
+      if (!alarm.is_enabled) continue;
+      if (!alarm.days_of_week.includes(nowDay)) continue;
+
+      const [h, m] = alarm.time.split(":").map(Number);
+      // 今の時刻と一致 (秒は±30秒以内で判定)
+      if (h === nowH && m === nowM && now.getSeconds() < 30) {
+        ringing = alarm;
+        log(`🔔🔔🔔 ALARM RINGING id=${ringing.id} time=${ringing.time}`);
+        lastHeartbeatAt = 0;
+        break;
+      }
     }
   }
 

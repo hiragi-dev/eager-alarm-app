@@ -22,13 +22,15 @@ import {
 } from "@/lib/mqtt";
 import {
   buildAddCommand,
+  buildEditCommand,
   buildDeleteCommand,
   buildListCommand,
   buildPauseCommand,
   buildStatusCommand,
   buildStopCommand,
-  sortAlarmsByWakeupTime,
+  sortAlarmsByTime,
   type Alarm,
+  type DayOfWeek,
 } from "@/lib/alarm";
 import { useNotify } from "@/contexts/NotificationProvider";
 
@@ -60,7 +62,8 @@ type MqttContextValue = {
   alarms: Alarm[];
   alarmsUpdatedAt: number | null;
   requestAlarms: () => void;
-  addAlarm: (wakeupTime: string) => void;
+  addAlarm: (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => void;
+  editAlarm: (id: string, time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => void;
   deleteAlarm: (id: string) => void;
   sendPauseCommand: (durationMs: number) => void;
   sendStopCommand: () => void;
@@ -176,9 +179,10 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
       addLog(`← ${topic}: ${text}`);
       if (topic === aTopic) {
         try {
-          const parsed = JSON.parse(text) as Alarm[];
-          setAlarms(sortAlarmsByWakeupTime(parsed));
-          setAlarmsUpdatedAt(Date.now());
+            const rawAlarms = JSON.parse(text);
+            // Sort by time as per v2 spec
+            setAlarms(sortAlarmsByTime(rawAlarms as Alarm[]));
+            setAlarmsUpdatedAt(Date.now());
         } catch {
           addLog("アラーム一覧の解析に失敗しました");
         }
@@ -254,11 +258,17 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   }, [publishCommand]);
 
   const addAlarm = useCallback(
-    (wakeupTime: string) => {
-      publishCommand(buildAddCommand(wakeupTime));
+    (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => {
+      publishCommand(buildAddCommand(time, daysOfWeek, isEnabled));
       // add はエッジ側から一覧の自動返信が来ない前提のため、直後に list を送って更新する。
-      // 同一パブリッシャー・同一トピックへの QoS1 publish は配信順序が保証されるため、
-      // エッジ側は add を処理した後にこの list を受け取る。
+      publishCommand(buildListCommand());
+    },
+    [publishCommand],
+  );
+
+  const editAlarm = useCallback(
+    (id: string, time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => {
+      publishCommand(buildEditCommand(id, time, daysOfWeek, isEnabled));
       publishCommand(buildListCommand());
     },
     [publishCommand],
@@ -331,6 +341,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     alarmsUpdatedAt,
     requestAlarms,
     addAlarm,
+    editAlarm,
     deleteAlarm,
     sendPauseCommand,
     sendStopCommand,
