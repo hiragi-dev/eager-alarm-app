@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, type SyntheticEvent } from "react";
+import { useState, type ReactNode } from "react";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
-import Typography from "@mui/material/Typography";
+import BottomNavigation from "@mui/material/BottomNavigation";
+import BottomNavigationAction from "@mui/material/BottomNavigationAction";
 import AlarmControl from "@/components/AlarmControl";
+import AlarmIcon from "@mui/icons-material/Alarm";
+import SettingsIcon from "@mui/icons-material/Settings";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
 import ArrivalStopBridge from "@/components/ArrivalStopBridge";
 import GyroTest from "@/components/GyroTest";
 import LocationSettings from "@/components/LocationSettings";
@@ -20,14 +26,18 @@ import MqttProvider from "@/contexts/MqttProvider";
 import NotificationProvider from "@/contexts/NotificationProvider";
 import StopSequenceProvider from "@/contexts/StopSequenceProvider";
 
-type TabKey = "settings" | "alarms" | "stop" | "location" | "gyro";
+type TabKey = "settings" | "alarms" | "stop";
+type SettingsViewKey = "menu" | "mqtt" | "location" | "gyro";
 
 export default function Home() {
-  const [tab, setTab] = useState<TabKey>("settings");
+  const [tab, setTab] = useState<TabKey>("alarms");
+  const [settingsView, setSettingsView] = useState<SettingsViewKey>("menu");
 
-  const handleChange = (_event: SyntheticEvent, value: TabKey) => {
-    setTab(value);
-  };
+  const navigationItems: Array<{ key: TabKey; label: string; icon: ReactNode }> = [
+    { key: "settings", label: "設定", icon: <SettingsIcon /> },
+    { key: "alarms", label: "アラーム", icon: <AlarmIcon /> },
+    { key: "stop", label: "停止", icon: <StopCircleIcon /> },
+  ];
 
   return (
     <NotificationProvider>
@@ -37,48 +47,165 @@ export default function Home() {
             <StopSequenceProvider>
               <WalkPauseBridge />
               <ArrivalStopBridge />
-              <Container maxWidth="sm">
-                <Box sx={{ py: 6 }}>
-                  <Stack spacing={1} sx={{ mb: 3 }}>
-                    <Typography variant="h4" component="h1">
-                      eager-alarm
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      MQTT 経由で Raspberry Pi（eager-alarm-edge）のアラームを制御します。
-                    </Typography>
-                  </Stack>
+              <Box
+                sx={{
+                  height: "100vh",
+                  overflow: "hidden",
+                  bgcolor: "#000000",
+                  color: "#f7ffe8",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <Container maxWidth="sm" sx={{ pt: 3, pb: 2, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                  <Box role="tabpanel" hidden={tab !== "settings"} sx={{ height: "100%" }}>
+                    {tab === "settings" && (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 2, height: "100%" }}>
+                        <Box
+                          sx={{
+                            position: "relative",
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              inset: 0,
+                              overflowY: "auto",
+                              px: 0.25,
+                              pb: 2,
+                              transform: settingsView === "menu" ? "translateX(0%)" : "translateX(-100%)",
+                              transition: "transform 180ms ease",
+                              pointerEvents: settingsView === "menu" ? "auto" : "none",
+                            }}
+                          >
+                            <List
+                              sx={{
+                                bgcolor: "rgba(255,255,255,0.04)",
+                                borderRadius: 3,
+                                border: "1px solid rgba(217, 255, 77, 0.12)",
+                              }}
+                            >
+                              <ListItemButton onClick={() => setSettingsView("mqtt")}>
+                                <ListItemText primary="MQTT設定" secondary="接続先サーバーを設定" />
+                                <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
+                                  ›
+                                </Box>
+                              </ListItemButton>
+                              <ListItemButton onClick={() => setSettingsView("location")}>
+                                <ListItemText primary="位置情報" secondary="位置情報の許可と設定" />
+                                <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
+                                  ›
+                                </Box>
+                              </ListItemButton>
+                              <ListItemButton onClick={() => setSettingsView("gyro")}>
+                                <ListItemText primary="ジャイロ" secondary="ジャイロの許可と確認" />
+                                <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
+                                  ›
+                                </Box>
+                              </ListItemButton>
+                            </List>
+                          </Box>
 
-                  <Tabs
-                    value={tab}
-                    onChange={handleChange}
-                    variant="scrollable"
-                    scrollButtons="auto"
-                    sx={{ mb: 3 }}
-                  >
-                    <Tab label="MQTT設定" value="settings" />
-                    <Tab label="アラーム" value="alarms" />
-                    <Tab label="アラームを止める" value="stop" />
-                    <Tab label="位置情報" value="location" />
-                    <Tab label="ジャイロ" value="gyro" />
-                  </Tabs>
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              inset: 0,
+                              overflowY: "auto",
+                              px: 0.25,
+                              pb: 2,
+                              transform: settingsView === "menu" ? "translateX(100%)" : "translateX(0%)",
+                              transition: "transform 180ms ease",
+                              pointerEvents: settingsView === "menu" ? "none" : "auto",
+                            }}
+                          >
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <Button
+                                variant="text"
+                                color="primary"
+                                onClick={() => setSettingsView("menu")}
+                                sx={{ alignSelf: "flex-start", px: 0, mb: 0.5 }}
+                              >
+                                ← 設定一覧へ戻る
+                              </Button>
 
-                  <Box role="tabpanel" hidden={tab !== "settings"}>
-                    {tab === "settings" && <MqttControl />}
+                              {settingsView === "mqtt" && <MqttControl />}
+                              {settingsView === "location" && <LocationSettings />}
+                              {settingsView === "gyro" && <GyroTest />}
+                            </Box>
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
                   </Box>
-                  <Box role="tabpanel" hidden={tab !== "alarms"}>
+                  <Box role="tabpanel" hidden={tab !== "alarms"} sx={{ height: "100%" }}>
                     {tab === "alarms" && <AlarmControl />}
                   </Box>
-                  <Box role="tabpanel" hidden={tab !== "stop"}>
+                  <Box role="tabpanel" hidden={tab !== "stop"} sx={{ height: "100%" }}>
                     {tab === "stop" && <StopAlarmControl />}
                   </Box>
-                  <Box role="tabpanel" hidden={tab !== "location"}>
-                    {tab === "location" && <LocationSettings />}
-                  </Box>
-                  <Box role="tabpanel" hidden={tab !== "gyro"}>
-                    {tab === "gyro" && <GyroTest />}
-                  </Box>
+                </Container>
+
+                <Box
+                  sx={{
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 10,
+                    px: 2,
+                    pb: 3,
+                  }}
+                >
+                  <Container maxWidth="sm" sx={{ px: 0 }}>
+                    <Box
+                      sx={{
+                        overflow: "hidden",
+                        borderRadius: 4,
+                        bgcolor: "rgba(20, 20, 20, 0.85)",
+                        backdropFilter: "blur(20px)",
+                        boxShadow: "0 12px 40px rgba(0, 0, 0, 0.6)",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                      }}
+                    >
+                      <BottomNavigation
+                        showLabels
+                        value={tab}
+                        onChange={(event, newValue) => {
+                          setTab(newValue);
+                        }}
+                        sx={{
+                          bgcolor: "transparent",
+                          height: 68,
+                          "& .MuiBottomNavigationAction-root": {
+                            color: "rgba(255, 255, 255, 0.5)",
+                            minWidth: "auto",
+                            "&.Mui-selected": {
+                              color: "primary.main",
+                            },
+                          },
+                          "& .MuiBottomNavigationAction-label": {
+                            fontWeight: 600,
+                            marginTop: "4px",
+                            "&.Mui-selected": {
+                              fontSize: "0.75rem",
+                            },
+                          },
+                        }}
+                      >
+                        {navigationItems.map((item) => (
+                          <BottomNavigationAction
+                            key={item.key}
+                            label={item.label}
+                            value={item.key}
+                            icon={item.icon}
+                          />
+                        ))}
+                      </BottomNavigation>
+                    </Box>
+                  </Container>
                 </Box>
-              </Container>
+              </Box>
             </StopSequenceProvider>
           </LocationProvider>
         </GyroProvider>
