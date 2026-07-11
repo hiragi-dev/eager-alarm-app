@@ -33,6 +33,7 @@ const TOPIC_PREFIX = "eager-alarm";
 const COMMAND_TOPIC = `${TOPIC_PREFIX}/${DEVICE_ID}/command`;
 const ALARMS_TOPIC = `${TOPIC_PREFIX}/${DEVICE_ID}/alarms`;
 const STATUS_TOPIC = `${TOPIC_PREFIX}/${DEVICE_ID}/status`;
+const RINGING_STATUS_TOPIC = `${TOPIC_PREFIX}/${DEVICE_ID}/ringing_status`;
 
 const TICK_MS = 500;
 const RINGING_HEARTBEAT_MS = 2000;
@@ -181,6 +182,16 @@ function handleCommand(client, cmd) {
       client.publish(STATUS_TOPIC, payload, { qos: 2 }, (err) => {
         if (err) log(`⚠ status応答送信失敗: ${err.message}`);
         else log(`💓 status応答 → ${STATUS_TOPIC}: ${payload}`);
+      });
+      break;
+    }
+    case "ringing_status": {
+      const payload = JSON.stringify({
+        is_ringing: ringing !== null,
+        ringing_ids: ringing ? [ringing.id] : [],
+      });
+      client.publish(RINGING_STATUS_TOPIC, payload, { qos: 2 }, (err) => {
+        if (err) log(`⚠ ringing_status応答送信失敗: ${err.message}`);
       });
       break;
     }

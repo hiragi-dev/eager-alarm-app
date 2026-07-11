@@ -10,8 +10,11 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import AlarmControl from "@/components/AlarmControl";
 import AlarmIcon from "@mui/icons-material/Alarm";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import SettingsIcon from "@mui/icons-material/Settings";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import ArrivalStopBridge from "@/components/ArrivalStopBridge";
@@ -25,6 +28,7 @@ import LocationProvider from "@/contexts/LocationProvider";
 import MqttProvider from "@/contexts/MqttProvider";
 import NotificationProvider from "@/contexts/NotificationProvider";
 import StopSequenceProvider from "@/contexts/StopSequenceProvider";
+import RingingAlert from "@/components/RingingAlert";
 
 type TabKey = "settings" | "alarms" | "stop";
 type SettingsViewKey = "menu" | "mqtt" | "location" | "walkSensor";
@@ -47,6 +51,7 @@ export default function Home() {
             <StopSequenceProvider>
               <WalkPauseBridge />
               <ArrivalStopBridge />
+              <RingingAlert onGoToStop={() => setTab("stop")} />
               <Box
                 sx={{
                   height: "100vh",

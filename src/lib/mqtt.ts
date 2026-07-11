@@ -85,6 +85,11 @@ export function alarmsTopic(deviceId: string): string {
   return `${TOPIC_PREFIX}/${deviceId}/alarms`;
 }
 
+/** eager-alarm-edge がアラーム鳴動状態を返信するトピック */
+export function ringingStatusTopic(deviceId: string): string {
+  return `${TOPIC_PREFIX}/${deviceId}/ringing_status`;
+}
+
 /** ランダムなデバイスIDを生成（QRペアリングを見据えた一意ID） */
 export function generateDeviceId(): string {
   const rand = Math.random().toString(16).slice(2, 10);

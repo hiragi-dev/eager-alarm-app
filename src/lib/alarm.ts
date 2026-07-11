@@ -15,7 +15,13 @@ export type AlarmCommand =
   | { type: "list" }
   | { type: "pause"; duration_ms: number }
   | { type: "stop" }
-  | { type: "status" };
+  | { type: "status" }
+  | { type: "ringing_status" };
+
+export type RingingStatus = {
+  is_ringing: boolean;
+  ringing_ids: string[];
+};
 
 export function buildAddCommand(time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean): AlarmCommand {
   return { type: "add", time, days_of_week: daysOfWeek, is_enabled: isEnabled };
@@ -43,6 +49,10 @@ export function buildStopCommand(): AlarmCommand {
 
 export function buildStatusCommand(): AlarmCommand {
   return { type: "status" };
+}
+
+export function buildRingingStatusCommand(): AlarmCommand {
+  return { type: "ringing_status" };
 }
 
 /** 時刻が早い順に並べ替える ("HH:MM" 形式の文字列比較) */

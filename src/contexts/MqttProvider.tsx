@@ -12,6 +12,7 @@ import type { IClientOptions, MqttClient } from "mqtt";
 import {
   alarmsTopic,
   commandTopic,
+  ringingStatusTopic,
   defaultSettings,
   envSettings,
   isDev,
@@ -26,11 +27,13 @@ import {
   buildDeleteCommand,
   buildListCommand,
   buildPauseCommand,
+  buildRingingStatusCommand,
   buildStatusCommand,
   buildStopCommand,
   sortAlarmsByTime,
   type Alarm,
   type DayOfWeek,
+  type RingingStatus,
 } from "@/lib/alarm";
 import { useNotify } from "@/contexts/NotificationProvider";
 
@@ -49,6 +52,8 @@ const MAX_LOG = 30;
 const STATUS_POLL_INTERVAL_MS = 5000;
 /** この時間内に status トピックへの応答が無ければオフライン扱いにする */
 const STATUS_OFFLINE_THRESHOLD_MS = 13000;
+/** ringing_status的のポーリング間隔 */
+const RINGING_POLL_INTERVAL_MS = 3000;
 
 type MqttContextValue = {
   settings: MqttSettings;
@@ -67,6 +72,7 @@ type MqttContextValue = {
   deleteAlarm: (id: string) => void;
   sendPauseCommand: (durationMs: number) => void;
   sendStopCommand: () => void;
+  ringingStatus: RingingStatus | null;
   envSeeded: boolean;
 };
 
@@ -87,6 +93,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   const [log, setLog] = useState<LogEntry[]>([]);
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [alarmsUpdatedAt, setAlarmsUpdatedAt] = useState<number | null>(null);
+  const [ringingStatus, setRingingStatus] = useState<RingingStatus | null>(null);
   const clientRef = useRef<MqttClient | null>(null);
   const lastEdgeResponseAtRef = useRef<number | null>(null);
 
@@ -160,16 +167,17 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     clientRef.current = client;
     const sTopic = statusTopic(s.deviceId);
     const aTopic = alarmsTopic(s.deviceId);
+    const rTopic = ringingStatusTopic(s.deviceId);
 
     client.on("connect", () => {
       setStatus("connected");
       addLog("接続しました");
-      client.subscribe([sTopic, aTopic], { qos: 2 }, (err) => {
+      client.subscribe([sTopic, aTopic, rTopic], { qos: 2 }, (err) => {
         if (err) {
           addLog(`購読失敗: ${err.message}`);
           notify("error", `トピックの購読に失敗しました: ${err.message}`);
         } else {
-          addLog(`購読開始: ${sTopic}, ${aTopic} (QoS 2)`);
+          addLog(`購読開始: ${sTopic}, ${aTopic}, ${rTopic} (QoS 2)`);
         }
       });
     });
@@ -185,6 +193,14 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
             setAlarmsUpdatedAt(Date.now());
         } catch {
           addLog("アラーム一覧の解析に失敗しました");
+        }
+      }
+      if (topic === rTopic) {
+        try {
+          const rs = JSON.parse(text) as RingingStatus;
+          setRingingStatus(rs);
+        } catch {
+          addLog("ringing_status の解析に失敗しました");
         }
       }
       if (topic === sTopic) {
@@ -293,11 +309,26 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     publishCommand(buildStopCommand());
   }, [publishCommand]);
 
-  // 接続確立時に最新のアラーム一覧を自動取得する
+  // 接続確立時に最新のアラーム一覧とringing_statusを自動取得する
   useEffect(() => {
-    if (status === "connected") requestAlarms();
+    if (status === "connected") {
+      requestAlarms();
+      publishCommand(buildRingingStatusCommand());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  // ringing_status ポーリング
+  useEffect(() => {
+    if (status !== "connected") {
+      setRingingStatus(null);
+      return;
+    }
+    const pollId = setInterval(() => {
+      publishCommand(buildRingingStatusCommand());
+    }, RINGING_POLL_INTERVAL_MS);
+    return () => clearInterval(pollId);
+  }, [status, publishCommand]);
 
   // edgeデバイスの生存確認: ブローカーに接続している間、statusコマンドを定期送信し、
   // statusトピックへの応答がタイムアウト内に来なければオフライン扱いにする。
@@ -345,6 +376,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     deleteAlarm,
     sendPauseCommand,
     sendStopCommand,
+    ringingStatus,
     envSeeded,
   };
 

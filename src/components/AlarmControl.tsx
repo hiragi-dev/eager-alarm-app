@@ -17,8 +17,7 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import CloudOffIcon from "@mui/icons-material/CloudOff";
@@ -230,39 +229,47 @@ export default function AlarmControl() {
           />
 
           {/* Weekday Selector */}
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: "0.7rem" }}>
             繰り返す曜日
           </Typography>
-          <ToggleButtonGroup
-            value={selectedDays}
-            onChange={(_, newDays) => setSelectedDays(newDays as DayOfWeek[])}
-            aria-label="曜日選択"
-            disabled={saving}
-            sx={{ flexWrap: "wrap", gap: 0.5, width: "100%", "& .MuiToggleButtonGroup-grouped": { margin: 0 } }}
-          >
-            {ALL_DAYS.map(day => (
-              <ToggleButton
-                key={day}
-                value={day}
-                aria-label={DAY_LABELS[day]}
-                sx={{
-                  width: "calc(100% / 7 - 4px)",
-                  height: 40,
-                  borderRadius: "50% !important",
-                  border: "none !important",
-                  color: "rgba(255,255,255,0.5)",
-                  fontWeight: 600,
-                  fontSize: "0.85rem",
-                  "&.Mui-selected": {
-                    bgcolor: "#0a84ff !important",
-                    color: "#fff !important",
-                  },
-                }}
-              >
-                {DAY_LABELS[day]}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 0.5 }}>
+            {ALL_DAYS.map(day => {
+              const selected = selectedDays.includes(day);
+              const isSat = day === "Sat";
+              const isSun = day === "Sun";
+              const selectedColor = isSat ? "#0a84ff" : isSun ? "#ff453a" : "#30d158";
+              return (
+                <Chip
+                  key={day}
+                  label={DAY_LABELS[day]}
+                  onClick={() => {
+                    if (saving) return;
+                    setSelectedDays(prev =>
+                      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+                    );
+                  }}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "50%",
+                    fontWeight: 700,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                    bgcolor: selected ? selectedColor : "rgba(255,255,255,0.08)",
+                    color: selected ? "#fff" : isSat ? "#0a84ff" : isSun ? "#ff453a" : "rgba(255,255,255,0.55)",
+                    transition: "background-color 0.15s ease, transform 0.1s ease",
+                    "&:hover": {
+                      bgcolor: selected ? selectedColor : "rgba(255,255,255,0.14)",
+                      transform: "scale(1.08)",
+                    },
+                    "&:active": { transform: "scale(0.95)" },
+                    "& .MuiChip-label": { px: 0 },
+                    opacity: saving ? 0.5 : 1,
+                  }}
+                />
+              );
+            })}
+          </Box>
         </DialogContent>
         <DialogActions sx={{ flexDirection: "column", p: 2, gap: 1 }}>
           <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
