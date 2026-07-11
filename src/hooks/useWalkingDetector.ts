@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { GyroPermission } from "@/hooks/useGyroscope";
+import type { WalkSensorPermission } from "@/hooks/useWalkSensor";
 
 const GRAVITY = 9.81;
 /** 重力を除いた加速度の変動がこの値(m/s²)を超えたら「歩行によるピーク」候補とみなす */
@@ -21,7 +21,7 @@ const WALKING_TIMEOUT_MS = 1500;
  * 直近 STEP_WINDOW_MS 内に MIN_STEPS_IN_WINDOW 回以上ピークがあれば歩行中と判定する。
  * しきい値は簡易的なもので、端末の持ち方・機種によって精度は変わる。
  */
-export function useWalkingDetector(permission: GyroPermission) {
+export function useWalkingDetector(permission: WalkSensorPermission) {
   const [isWalking, setIsWalking] = useState(false);
   const [stepCount, setStepCount] = useState(0);
 

@@ -8,7 +8,7 @@ import CardContent from "@mui/material/CardContent";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
-import { useGyro } from "@/contexts/GyroProvider";
+import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
 import { useLocation } from "@/contexts/LocationProvider";
 import { useStopSequence } from "@/contexts/StopSequenceProvider";
 import { useAppReadiness } from "@/hooks/useAppReadiness";
@@ -33,7 +33,7 @@ function stopMethodLabel(method: ReturnType<typeof useAppReadiness>["stopMethod"
 }
 
 export default function StopAlarmControl() {
-  const { isWalking } = useGyro();
+  const { isWalking } = useWalkSensorContext();
   const { distanceToTarget, hasArrived, target } = useLocation();
   const { armed, arm, disarm, lastStoppedAt } = useStopSequence();
   const { stopFlow, stopMethod } = useAppReadiness();

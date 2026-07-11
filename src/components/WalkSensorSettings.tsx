@@ -9,7 +9,7 @@ import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { useGyro } from "@/contexts/GyroProvider";
+import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
 
 function fmt(n: number | null | undefined, unit: string): string {
   return n == null ? "—" : `${n.toFixed(1)}${unit}`;
@@ -26,23 +26,22 @@ function StatBox({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function GyroTest() {
+export default function WalkSensorSettings() {
   const {
     supported,
     secureContext,
     permission,
     requestPermission,
-    orientation,
     motion,
     lastEventAt,
     isWalking,
     stepCount,
-  } = useGyro();
+  } = useWalkSensorContext();
 
   if (supported === false) {
     return (
       <Alert severity="error">
-        このブラウザ/デバイスは DeviceOrientation / DeviceMotion に対応していません。
+        このブラウザ/デバイスは歩行検知（加速度センサー）に対応していません。
       </Alert>
     );
   }
@@ -50,7 +49,7 @@ export default function GyroTest() {
   if (secureContext === false) {
     return (
       <Alert severity="warning">
-        セキュアコンテキストではありません（HTTP接続）。スマホ実機でジャイロを使うには
+        セキュアコンテキストではありません（HTTP接続）。スマホ実機で歩行検知を使うには
         HTTPS（または localhost）でアクセスする必要があります。PWA配信時はHTTPS化が必須です。
       </Alert>
     );
@@ -59,7 +58,7 @@ export default function GyroTest() {
   if (permission === "denied") {
     return (
       <Alert severity="warning">
-        センサーの利用が拒否されています。ブラウザの設定から許可してください。
+        歩行検知の利用が拒否されています。ブラウザの設定から許可してください。
       </Alert>
     );
   }
@@ -69,10 +68,10 @@ export default function GyroTest() {
       <Card variant="outlined">
         <CardContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            傾き・加速度センサーを使うには許可が必要です。
+            歩行検知を行うには許可が必要です。
           </Typography>
           <Button variant="contained" onClick={requestPermission}>
-            センサーの利用を許可
+            歩行検知の利用を許可
           </Button>
         </CardContent>
       </Card>
@@ -81,32 +80,6 @@ export default function GyroTest() {
 
   return (
     <Stack spacing={3}>
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            傾き (DeviceOrientation)
-          </Typography>
-          <Stack direction="row" spacing={3}>
-            <StatBox label="alpha (Z)" value={fmt(orientation?.alpha, "°")} />
-            <StatBox label="beta (X)" value={fmt(orientation?.beta, "°")} />
-            <StatBox label="gamma (Y)" value={fmt(orientation?.gamma, "°")} />
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            回転速度 (DeviceMotion / rotationRate)
-          </Typography>
-          <Stack direction="row" spacing={3}>
-            <StatBox label="alpha" value={fmt(motion?.rotationAlpha, "°/s")} />
-            <StatBox label="beta" value={fmt(motion?.rotationBeta, "°/s")} />
-            <StatBox label="gamma" value={fmt(motion?.rotationGamma, "°/s")} />
-          </Stack>
-        </CardContent>
-      </Card>
-
       <Card variant="outlined">
         <CardContent>
           <Typography variant="h6" sx={{ mb: 2 }}>
@@ -135,7 +108,7 @@ export default function GyroTest() {
           <Typography variant="body2" color="text.secondary">
             {lastEventAt
               ? `最終受信: ${new Date(lastEventAt).toLocaleTimeString("ja-JP", { hour12: false })}（数値が変化し続けていれば検知できています）`
-              : "まだセンサーデータを受信していません。スマホでこのページを開き、端末を動かしてください。"}
+              : "まだセンサーデータを受信していません。スマホでこのページを開き、端末を持ったまま歩行してください。"}
           </Typography>
         </CardContent>
       </Card>
@@ -147,7 +120,7 @@ export default function GyroTest() {
             spacing={1}
             sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}
           >
-            <Typography variant="h6">歩行検知</Typography>
+            <Typography variant="h6">歩行検知状態</Typography>
             <Chip
               size="small"
               label={isWalking ? "歩行中" : "静止中"}

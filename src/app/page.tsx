@@ -15,19 +15,19 @@ import AlarmIcon from "@mui/icons-material/Alarm";
 import SettingsIcon from "@mui/icons-material/Settings";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import ArrivalStopBridge from "@/components/ArrivalStopBridge";
-import GyroTest from "@/components/GyroTest";
 import LocationSettings from "@/components/LocationSettings";
 import MqttControl from "@/components/MqttControl";
 import StopAlarmControl from "@/components/StopAlarmControl";
 import WalkPauseBridge from "@/components/WalkPauseBridge";
-import GyroProvider from "@/contexts/GyroProvider";
+import WalkSensorSettings from "@/components/WalkSensorSettings";
+import WalkSensorProvider from "@/contexts/WalkSensorProvider";
 import LocationProvider from "@/contexts/LocationProvider";
 import MqttProvider from "@/contexts/MqttProvider";
 import NotificationProvider from "@/contexts/NotificationProvider";
 import StopSequenceProvider from "@/contexts/StopSequenceProvider";
 
 type TabKey = "settings" | "alarms" | "stop";
-type SettingsViewKey = "menu" | "mqtt" | "location" | "gyro";
+type SettingsViewKey = "menu" | "mqtt" | "location" | "walkSensor";
 
 export default function Home() {
   const [tab, setTab] = useState<TabKey>("alarms");
@@ -42,7 +42,7 @@ export default function Home() {
   return (
     <NotificationProvider>
       <MqttProvider>
-        <GyroProvider>
+        <WalkSensorProvider>
           <LocationProvider>
             <StopSequenceProvider>
               <WalkPauseBridge />
@@ -100,8 +100,8 @@ export default function Home() {
                                   ›
                                 </Box>
                               </ListItemButton>
-                              <ListItemButton onClick={() => setSettingsView("gyro")}>
-                                <ListItemText primary="ジャイロ" secondary="ジャイロの許可と確認" />
+                              <ListItemButton onClick={() => setSettingsView("walkSensor")}>
+                                <ListItemText primary="歩行検知" secondary="歩行検知の許可と確認" />
                                 <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
                                   ›
                                 </Box>
@@ -133,7 +133,7 @@ export default function Home() {
 
                               {settingsView === "mqtt" && <MqttControl />}
                               {settingsView === "location" && <LocationSettings />}
-                              {settingsView === "gyro" && <GyroTest />}
+                              {settingsView === "walkSensor" && <WalkSensorSettings />}
                             </Box>
                           </Box>
                         </Box>
@@ -208,7 +208,7 @@ export default function Home() {
               </Box>
             </StopSequenceProvider>
           </LocationProvider>
-        </GyroProvider>
+        </WalkSensorProvider>
       </MqttProvider>
     </NotificationProvider>
   );

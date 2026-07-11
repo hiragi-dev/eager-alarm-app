@@ -1,5 +1,5 @@
 import type { EdgeDeviceStatus, MqttStatus } from "@/contexts/MqttProvider";
-import type { GyroPermission } from "@/hooks/useGyroscope";
+import type { WalkSensorPermission } from "@/hooks/useWalkSensor";
 import type { GeoTarget } from "@/lib/geo";
 import type { LocationPermission } from "@/contexts/LocationProvider";
 
@@ -7,7 +7,7 @@ import type { LocationPermission } from "@/contexts/LocationProvider";
  * このモジュールは、MQTTブローカーへの接続状況・edgeデバイスの生存状況・
  * 位置情報の許可状況・アラーム停止方法の有無から「今どの機能が使えるか」を一意に導出するための
  * 代数的データ型(discriminated union)と導出関数の集まり。各Providerが持つ生の状態
- * (MqttStatus, EdgeDeviceStatus, GyroPermission, LocationPermission等)をここでのみ組み合わせ、
+ * (MqttStatus, EdgeDeviceStatus, WalkSensorPermission, LocationPermission等)をここでのみ組み合わせ、
  * コンポーネント側は導出結果を見て表示を出し分ける・操作を許可/禁止する。
  *
  * ブローカー接続とedgeデバイスの生存は別物として扱う: ブローカーに接続できていても
@@ -35,7 +35,7 @@ export type WalkDetectionReadiness =
 export function deriveWalkDetectionReadiness(
   supported: boolean | null,
   secureContext: boolean | null,
-  permission: GyroPermission,
+  permission: WalkSensorPermission,
 ): WalkDetectionReadiness {
   if (supported === false) return { kind: "unsupported" };
   if (secureContext === false) return { kind: "insecure" };

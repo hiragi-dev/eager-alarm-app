@@ -1,6 +1,6 @@
 "use client";
 
-import { useGyro } from "@/contexts/GyroProvider";
+import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
 import { useLocation } from "@/contexts/LocationProvider";
 import { useMqtt, type EdgeDeviceStatus } from "@/contexts/MqttProvider";
 import {
@@ -29,18 +29,18 @@ export type AppReadiness = {
 };
 
 /**
- * MqttProvider/GyroProvider/LocationProvider の生の状態を合成し、
- * 「今どの機能が使えるか」をsrc/lib/appState.tsの代数的データ型として導出する。
- * MqttProvider・GyroProvider・LocationProvider の配下でのみ使用可能。
+ * MqttProvider/WalkSensorProvider/LocationProvider の生の状態を合成し、
+ * 「この機能は今使える状態か？」「どの方法で止める設定になっているか？」をページ全体に提供する。
+ * MqttProvider・WalkSensorProvider・LocationProvider の配下でのみ使用可能。
  */
 export function useAppReadiness(): AppReadiness {
   const { status, edgeStatus } = useMqtt();
-  const { supported: gyroSupported, secureContext: gyroSecureContext, permission: gyroPermission } =
-    useGyro();
+  const { supported: walkSensorSupported, secureContext: walkSensorSecureContext, permission: walkSensorPermission } =
+    useWalkSensorContext();
   const { permission: locationPermission, target } = useLocation();
 
   const broker = brokerConnectionFromStatus(status);
-  const walk = deriveWalkDetectionReadiness(gyroSupported, gyroSecureContext, gyroPermission);
+  const walk = deriveWalkDetectionReadiness(walkSensorSupported, walkSensorSecureContext, walkSensorPermission);
   const location = deriveLocationDetectionReadiness(locationPermission, target);
   const stopMethod = deriveStopMethod(walk, location);
   const stopFlow = deriveStopFlowReadiness(broker, edgeStatus, stopMethod);
