@@ -5,11 +5,11 @@
 受信後は `alarm-demo/<DEVICE_ID>/status` に ack を publish して往復を確認できる。
 RPi.GPIO が利用可能なら指定ピンをオン/オフする(ラップトップ上では自動的にスキップ)。
 
-環境変数:
-  MQTT_BROKER   ブローカーのホスト名 (default: broker.hivemq.com)
-  MQTT_PORT     ポート (default: 1883。TLSなら 8883)
-  MQTT_USERNAME 認証ユーザー名 (任意)
-  MQTT_PASSWORD 認証パスワード (任意)
+接続情報は環境変数で設定する（.env.example をコピーして利用）:
+  MQTT_BROKER   ブローカーのホスト名 (必須。例: xxxx.s1.eu.hivemq.cloud)
+  MQTT_PORT     ポート (default: 8883。8883 なら自動で TLS 有効化)
+  MQTT_USERNAME 認証ユーザー名
+  MQTT_PASSWORD 認証パスワード
   DEVICE_ID     デバイスID (アプリ側と一致させる)
   GPIO_PIN      制御するBCMピン番号 (default: 17)
 
@@ -23,11 +23,17 @@ import sys
 
 import paho.mqtt.client as mqtt
 
-BROKER = os.environ.get("MQTT_BROKER", "broker.hivemq.com")
-PORT = int(os.environ.get("MQTT_PORT", "1883"))
+BROKER = os.environ.get("MQTT_BROKER", "")
+PORT = int(os.environ.get("MQTT_PORT", "8883"))
 USERNAME = os.environ.get("MQTT_USERNAME", "")
 PASSWORD = os.environ.get("MQTT_PASSWORD", "")
 DEVICE_ID = os.environ.get("DEVICE_ID") or (sys.argv[1] if len(sys.argv) > 1 else "demo-device")
+
+if not BROKER:
+    sys.exit(
+        "エラー: 環境変数 MQTT_BROKER が未設定です。\n"
+        "  .env.example を .env にコピーし、HiveMQ Cloud の接続情報を設定してください。"
+    )
 
 TOPIC_PREFIX = "alarm-demo"
 COMMAND_TOPIC = f"{TOPIC_PREFIX}/{DEVICE_ID}/command"

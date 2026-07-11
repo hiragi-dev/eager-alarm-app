@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:https": "next dev --experimental-https --experimental-https-key ./certificates/localhost-key.pem --experimental-https-cert ./certificates/localhost.pem",
+    "cert:renew": "bash scripts/renew-cert.sh",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mock:edge": "node --env-file=.env.local mock/edge-mock.mjs"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

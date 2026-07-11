@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { IClientOptions, MqttClient } from "mqtt";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -12,143 +10,44 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
-import {
-  commandTopic,
-  defaultSettings,
-  generateDeviceId,
-  type MqttSettings,
-  statusTopic,
-  STORAGE_KEY,
-} from "@/lib/mqtt";
+import { useMqtt, type EdgeDeviceStatus, type MqttStatus } from "@/contexts/MqttProvider";
 
-type Status = "disconnected" | "connecting" | "connected" | "error";
-
-type LogEntry = { time: string; text: string };
-
-const MAX_LOG = 30;
-
-const statusMeta: Record<Status, { label: string; color: "default" | "warning" | "success" | "error" }> = {
+const statusMeta: Record<
+  MqttStatus,
+  { label: string; color: "default" | "warning" | "success" | "error" }
+> = {
   disconnected: { label: "未接続", color: "default" },
   connecting: { label: "接続中…", color: "warning" },
   connected: { label: "接続済み", color: "success" },
   error: { label: "エラー", color: "error" },
 };
 
+const edgeStatusMeta: Record<
+  EdgeDeviceStatus,
+  { label: string; color: "default" | "warning" | "success" | "error" }
+> = {
+  unknown: { label: "edge: 確認中", color: "default" },
+  online: { label: "edge: オンライン", color: "success" },
+  offline: { label: "edge: オフライン", color: "error" },
+};
+
 export default function MqttControl() {
-  const [settings, setSettings] = useState<MqttSettings>(defaultSettings);
-  const [status, setStatus] = useState<Status>("disconnected");
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const clientRef = useRef<MqttClient | null>(null);
-
-  const addLog = useCallback((text: string) => {
-    const time = new Date().toLocaleTimeString("ja-JP", { hour12: false });
-    setLog((prev) => [{ time, text }, ...prev].slice(0, MAX_LOG));
-  }, []);
-
-  // 初回マウント時に localStorage から設定を復元。無ければ一意なデバイスIDを生成して保存。
-  useEffect(() => {
-    let next: MqttSettings;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        next = { ...defaultSettings, ...JSON.parse(raw) };
-      } else {
-        next = { ...defaultSettings, deviceId: generateDeviceId() };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      }
-    } catch {
-      next = { ...defaultSettings, deviceId: generateDeviceId() };
-    }
-    // localStorage からの初期復元（マウント時一度きり）
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSettings(next);
-  }, []);
-
-  // アンマウント時に接続を確実に閉じる
-  useEffect(() => {
-    return () => {
-      clientRef.current?.end(true);
-      clientRef.current = null;
-    };
-  }, []);
-
-  const updateSetting = (key: keyof MqttSettings, value: string) => {
-    setSettings((prev) => {
-      const next = { ...prev, [key]: value };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore storage errors
-      }
-      return next;
-    });
-  };
-
-  const connect = useCallback(async () => {
-    if (clientRef.current) return;
-    setStatus("connecting");
-    addLog(`${settings.brokerUrl} へ接続します…`);
-
-    const mqtt = (await import("mqtt")).default;
-    const options: IClientOptions = {
-      clientId: `webapp-${Math.random().toString(16).slice(2, 10)}`,
-      username: settings.username || undefined,
-      password: settings.password || undefined,
-      clean: true,
-      connectTimeout: 8000,
-      reconnectPeriod: 0,
-    };
-
-    const client = mqtt.connect(settings.brokerUrl, options);
-    clientRef.current = client;
-    const sTopic = statusTopic(settings.deviceId);
-
-    client.on("connect", () => {
-      setStatus("connected");
-      addLog("接続しました");
-      client.subscribe(sTopic, (err) => {
-        if (err) addLog(`購読失敗: ${err.message}`);
-        else addLog(`購読開始: ${sTopic}`);
-      });
-    });
-
-    client.on("message", (topic, payload) => {
-      addLog(`← ${topic}: ${payload.toString()}`);
-    });
-
-    client.on("error", (err) => {
-      setStatus("error");
-      addLog(`エラー: ${err.message}`);
-    });
-
-    client.on("close", () => {
-      setStatus((s) => (s === "error" ? s : "disconnected"));
-    });
-  }, [addLog, settings]);
-
-  const disconnect = useCallback(() => {
-    clientRef.current?.end(true);
-    clientRef.current = null;
-    setStatus("disconnected");
-    addLog("切断しました");
-  }, [addLog]);
-
-  const publish = useCallback(
-    (command: "on" | "off") => {
-      const client = clientRef.current;
-      if (!client || status !== "connected") return;
-      const topic = commandTopic(settings.deviceId);
-      const payload = JSON.stringify({ command, ts: Date.now() });
-      client.publish(topic, payload, { qos: 0 }, (err) => {
-        if (err) addLog(`送信失敗: ${err.message}`);
-        else addLog(`→ ${topic}: ${payload}`);
-      });
-    },
-    [addLog, settings.deviceId, status],
-  );
+  const {
+    settings,
+    updateSetting,
+    status,
+    edgeStatus,
+    connect,
+    disconnect,
+    log,
+    sendPowerCommand,
+    envSeeded,
+  } = useMqtt();
 
   const meta = statusMeta[status];
+  const edgeMeta = edgeStatusMeta[edgeStatus];
   const connected = status === "connected";
+  const editable = status === "disconnected";
 
   return (
     <Stack spacing={3}>
@@ -157,18 +56,39 @@ export default function MqttControl() {
           <Stack
             direction="row"
             spacing={1}
-            sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}
+            sx={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              mb: 2,
+            }}
           >
             <Typography variant="h6">接続設定</Typography>
-            <Chip label={meta.label} color={meta.color} size="small" />
+            <Stack direction="row" spacing={1}>
+              <Chip label={meta.label} color={meta.color} size="small" />
+              <Chip label={edgeMeta.label} color={edgeMeta.color} size="small" />
+            </Stack>
           </Stack>
+
+          {envSeeded && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mb: 2 }}
+            >
+              開発モード: .env.local の NEXT_PUBLIC_MQTT_*
+              を初期値として読み込みました
+            </Typography>
+          )}
 
           <Stack spacing={2}>
             <TextField
               label="ブローカー URL (WebSocket)"
               value={settings.brokerUrl}
               onChange={(e) => updateSetting("brokerUrl", e.target.value)}
-              disabled={status !== "disconnected"}
+              disabled={!editable}
+              required
+              placeholder="wss://xxxxxxxx.s1.eu.hivemq.cloud:8884/mqtt"
+              helperText="HiveMQ Cloud の WebSocket エンドポイント（TLS: 8884, パス /mqtt）"
               size="small"
               fullWidth
             />
@@ -176,26 +96,28 @@ export default function MqttControl() {
               label="デバイスID"
               value={settings.deviceId}
               onChange={(e) => updateSetting("deviceId", e.target.value)}
-              disabled={status !== "disconnected"}
+              disabled={!editable}
               helperText="Pi側の DEVICE_ID と一致させてください"
               size="small"
               fullWidth
             />
             <Stack direction="row" spacing={2}>
               <TextField
-                label="ユーザー名 (任意)"
+                label="ユーザー名"
                 value={settings.username}
                 onChange={(e) => updateSetting("username", e.target.value)}
-                disabled={status !== "disconnected"}
+                disabled={!editable}
+                autoComplete="off"
                 size="small"
                 fullWidth
               />
               <TextField
-                label="パスワード (任意)"
+                label="パスワード"
                 type="password"
                 value={settings.password}
                 onChange={(e) => updateSetting("password", e.target.value)}
-                disabled={status !== "disconnected"}
+                disabled={!editable}
+                autoComplete="new-password"
                 size="small"
                 fullWidth
               />
@@ -205,11 +127,20 @@ export default function MqttControl() {
               <Button
                 variant="contained"
                 onClick={connect}
-                disabled={status === "connecting" || connected || !settings.deviceId}
+                disabled={
+                  status === "connecting" ||
+                  connected ||
+                  !settings.deviceId ||
+                  !settings.brokerUrl
+                }
               >
                 接続
               </Button>
-              <Button variant="outlined" onClick={disconnect} disabled={status === "disconnected"}>
+              <Button
+                variant="outlined"
+                onClick={disconnect}
+                disabled={status === "disconnected"}
+              >
                 切断
               </Button>
             </Stack>
@@ -227,7 +158,7 @@ export default function MqttControl() {
               variant="contained"
               color="success"
               startIcon={<PowerSettingsNewIcon />}
-              onClick={() => publish("on")}
+              onClick={() => sendPowerCommand("on")}
               disabled={!connected}
               fullWidth
             >
@@ -237,7 +168,7 @@ export default function MqttControl() {
               variant="contained"
               color="error"
               startIcon={<PowerSettingsNewIcon />}
-              onClick={() => publish("off")}
+              onClick={() => sendPowerCommand("off")}
               disabled={!connected}
               fullWidth
             >
