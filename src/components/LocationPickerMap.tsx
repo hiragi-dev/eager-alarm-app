@@ -3,9 +3,11 @@
 import { useEffect, useRef } from "react";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
+import Slider from "@mui/material/Slider";
 import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { Circle, MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { GeoPoint } from "@/lib/geo";
@@ -53,10 +55,18 @@ type Props = {
   height?: number | string;
   /** 地図の角丸(px)。全画面表示など縁いっぱいに使う場合は0を指定する */
   borderRadius?: number;
+  /** 選択地点に描画する到達判定半径(m)。valueが無ければ描画しない */
+  radiusMeters?: number;
+  /** 指定すると地図下部に半径調整スライダーを表示する */
+  onRadiusChange?: (radiusMeters: number) => void;
+  minRadiusMeters?: number;
+  maxRadiusMeters?: number;
 };
 
 /**
  * タップ/クリックした地点にマーカーを立てて位置を選択させる地図。OpenStreetMapタイルを使用。
+ * 到達判定半径(radiusMeters)を指定すると選択地点に円を描画し、onRadiusChangeを渡すと
+ * 地図下部に半径調整スライダーを表示する。
  * Leafletはwindow/documentに依存しSSR非対応なため、呼び出し側で
  * next/dynamic(..., { ssr: false }) 経由で読み込むこと。
  */
@@ -67,6 +77,10 @@ export default function LocationPickerMap({
   currentPosition,
   height = 440,
   borderRadius = 12,
+  radiusMeters,
+  onRadiusChange,
+  minRadiusMeters = 5,
+  maxRadiusMeters = 200,
 }: Props) {
   const mapRef = useRef<L.Map | null>(null);
 
@@ -84,6 +98,8 @@ export default function LocationPickerMap({
     if (!currentPosition) return;
     mapRef.current?.flyTo([currentPosition.lat, currentPosition.lng], 17);
   };
+
+  const showRadiusSlider = !!onRadiusChange && !!value;
 
   return (
     <Box sx={{ position: "relative", height, width: "100%" }}>
@@ -108,6 +124,13 @@ export default function LocationPickerMap({
             interactive={false}
           />
         )}
+        {value && radiusMeters != null && radiusMeters > 0 && (
+          <Circle
+            center={[value.lat, value.lng]}
+            radius={radiusMeters}
+            pathOptions={{ color: "#4285F4", fillColor: "#4285F4", fillOpacity: 0.15, weight: 2 }}
+          />
+        )}
         {value && <Marker position={[value.lat, value.lng]} icon={markerIcon} />}
       </MapContainer>
 
@@ -117,7 +140,7 @@ export default function LocationPickerMap({
             onClick={handleGoToCurrentLocation}
             sx={{
               position: "absolute",
-              bottom: 12,
+              top: 12,
               right: 12,
               zIndex: 1000,
               bgcolor: "background.paper",
@@ -128,6 +151,37 @@ export default function LocationPickerMap({
             <MyLocationIcon color="primary" />
           </IconButton>
         </Tooltip>
+      )}
+
+      {showRadiusSlider && (
+        <Box
+          sx={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            zIndex: 1000,
+            bgcolor: "background.paper",
+            borderRadius: 2,
+            boxShadow: 3,
+            px: 2,
+            py: 1,
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            到達判定の半径: {radiusMeters}m
+          </Typography>
+          <Slider
+            size="small"
+            value={radiusMeters ?? minRadiusMeters}
+            onChange={(_event, next) => onRadiusChange?.(next as number)}
+            min={minRadiusMeters}
+            max={maxRadiusMeters}
+            step={5}
+            valueLabelDisplay="auto"
+            valueLabelFormat={(v) => `${v}m`}
+          />
+        </Box>
       )}
     </Box>
   );

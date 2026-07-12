@@ -77,7 +77,8 @@ type MqttContextValue = {
   ) => void;
   deleteAlarm: (id: string) => void;
   sendPauseCommand: (durationMs: number) => void;
-  sendStopCommand: () => void;
+  /** 戻り値のPromiseはブローカーへの配信確認(QoS2完了)を表す。falseは送信失敗 */
+  sendStopCommand: () => Promise<boolean>;
   ringingStatus: RingingStatus | null;
   envSeeded: boolean;
 };
@@ -289,20 +290,31 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     return () => document.removeEventListener("visibilitychange", handleVisible);
   }, [settings.brokerUrl, settings.deviceId, connect, addLog]);
 
+  /**
+   * QoS 2(Exactly Once)でコマンドを送信する。戻り値のPromiseは、ブローカーへの配信が
+   * QoS2ハンドシェイク(PUBCOMP)まで完了したかどうかを表す(true=配信確認済み)。
+   * 停止コマンドのように「確実に送信できたか」をUI側で待ち受けたい呼び出し元のために用意している。
+   */
   const publishCommand = useCallback(
-    (payload: unknown) => {
-      const client = clientRef.current;
-      if (!client || status !== "connected") return;
-      const topic = commandTopic(settings.deviceId);
-      const text = JSON.stringify(payload);
-      // QoS 2(Exactly Once)で送信し、アラーム操作が確実に一度だけデバイスへ届くことを保証する
-      client.publish(topic, text, { qos: 2 }, (err) => {
-        if (err) {
-          addLog(`送信失敗: ${err.message}`);
-          notify("error", `コマンドの送信に失敗しました: ${err.message}`);
-        } else {
-          addLog(`→ ${topic}: ${text}`);
+    (payload: unknown): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const client = clientRef.current;
+        if (!client || status !== "connected") {
+          resolve(false);
+          return;
         }
+        const topic = commandTopic(settings.deviceId);
+        const text = JSON.stringify(payload);
+        client.publish(topic, text, { qos: 2 }, (err) => {
+          if (err) {
+            addLog(`送信失敗: ${err.message}`);
+            notify("error", `コマンドの送信に失敗しました: ${err.message}`);
+            resolve(false);
+          } else {
+            addLog(`→ ${topic}: ${text}`);
+            resolve(true);
+          }
+        });
       });
     },
     [addLog, notify, status, settings.deviceId],
@@ -358,7 +370,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   );
 
   const sendStopCommand = useCallback(() => {
-    publishCommand(buildStopCommand());
+    return publishCommand(buildStopCommand());
   }, [publishCommand]);
 
   // 接続確立時に最新のアラーム一覧とringing_statusを自動取得する

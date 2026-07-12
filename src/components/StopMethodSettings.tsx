@@ -170,6 +170,8 @@ export default function StopMethodSettings() {
               currentPosition={currentPosition}
               height="100%"
               borderRadius={0}
+              radiusMeters={Number(radiusInput) || DEFAULT_STOP_METHOD_RADIUS_METERS}
+              onRadiusChange={(r) => setRadiusInput(String(r))}
             />
           </Box>
         </DialogContent>
@@ -201,15 +203,6 @@ export default function StopMethodSettings() {
               fullWidth
               size="small"
               autoFocus
-            />
-
-            <TextField
-              label="到達判定の半径 (m)"
-              type="number"
-              size="small"
-              value={radiusInput}
-              onChange={(e) => setRadiusInput(e.target.value)}
-              sx={{ maxWidth: 220 }}
             />
           </Stack>
         </DialogContent>

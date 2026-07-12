@@ -2,7 +2,6 @@
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Stack from "@mui/material/Stack";
@@ -25,18 +24,18 @@ function fmtDistance(m: number | null): string {
 
 /**
  * 「アラームを止める」サブタブ。アラームごとに事前設定された停止方法(位置情報)を
- * 自動的に監視して到達したら停止する(実際の送信は ArrivalStopBridge が担う)ため、
- * ここでは現在の状況表示と、手動で今すぐ止めるボタンのみを提供する。
+ * 自動的に監視して到達したら停止する(実際の送信・停止確認ポップアップは ArrivalStopBridge が担う)。
+ * このアプリは「設定した停止地点に到達するまで確実に止められない」ことを意図しているため、
+ * ここには手動で止めるボタンなどのフェイルセーフは置かず、状況表示のみを行う。
  * 複数アラームが同時に鳴動している場合は先頭の1件の停止方法のみ表示する(簡易表示)。
  */
 export default function StopAlarmControl() {
   const { isWalking } = useWalkSensorContext();
   const { currentPosition } = useLocation();
-  const { alarms, ringingStatus, sendStopCommand } = useMqtt();
+  const { alarms, ringingStatus } = useMqtt();
   const { stopMethods } = useStopMethods();
   const { alarmManagement } = useAppReadiness();
 
-  const ready = alarmManagement.kind === "ready";
   const ringingIds = ringingStatus?.ringing_ids ?? [];
   const isRinging = ringingIds.length > 0;
   const ringingAlarm = isRinging ? (alarms.find((a) => a.id === ringingIds[0]) ?? null) : null;
@@ -98,21 +97,12 @@ export default function StopAlarmControl() {
           </Card>
         ) : (
           isRinging && (
-            <Alert severity="info">
-              このアラームには位置情報の停止方法が設定されていません。下のボタンで手動で止めてください。
+            <Alert severity="warning">
+              このアラームには位置情報の停止方法が設定されていないため、自動的に停止できません。
+              「アラーム」タブで停止方法を設定してください。
             </Alert>
           )
         )}
-
-        <Button
-          variant="contained"
-          size="large"
-          color="error"
-          onClick={sendStopCommand}
-          disabled={!ready || !isRinging}
-        >
-          今すぐアラームを止める
-        </Button>
       </Stack>
 
       {/* アラームが鳴っていない場合のオーバーレイ */}
