@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type MotionData = {
   accelerationX: number | null;
@@ -35,12 +35,15 @@ export function useWalkSensor() {
   const [motion, setMotion] = useState<MotionData | null>(null);
   const [lastEventAt, setLastEventAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestingRef = useRef(false);
 
   // 初回マウント時に対応状況・許可要否を判定
   useEffect(() => {
     const hasMotion = typeof window !== "undefined" && "DeviceMotionEvent" in window;
     const needsPermission =
       hasMotion && !!requestPermissionFnOf(window.DeviceMotionEvent);
+    // マウント時一度きりの環境判定結果の反映
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEnv({ supported: hasMotion, secureContext: window.isSecureContext });
     setPermission(needsPermission ? "prompt" : "unnecessary");
   }, []);
@@ -69,6 +72,10 @@ export function useWalkSensor() {
   }, [permission]);
 
   const requestPermission = useCallback(async () => {
+    // 複数箇所(ボタン押下・初回タップ検知)から同時に呼ばれても、
+    // ネイティブの許可ダイアログが二重に出ないようにする
+    if (requestingRef.current) return;
+    requestingRef.current = true;
     setError(null);
     try {
       const motionRequest = requestPermissionFnOf(window.DeviceMotionEvent);
@@ -80,8 +87,13 @@ export function useWalkSensor() {
       const result = await motionRequest();
       setPermission(result === "granted" ? "granted" : "denied");
     } catch (err) {
+      // ユーザー操作を伴わない呼び出し（起動時の自動リクエスト等）はブラウザに
+      // 例外で拒否されることがあるが、それはユーザーが明示的に拒否したわけではない。
+      // ここで permission を denied にしてしまうと、以後ユーザー操作起点で
+      // リトライする手段(クリック時の再要求)が失われてしまうため prompt のまま維持する。
       setError(err instanceof Error ? err.message : String(err));
-      setPermission("denied");
+    } finally {
+      requestingRef.current = false;
     }
   }, []);
 

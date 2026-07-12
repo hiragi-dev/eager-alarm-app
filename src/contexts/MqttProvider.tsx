@@ -67,8 +67,14 @@ type MqttContextValue = {
   alarms: Alarm[];
   alarmsUpdatedAt: number | null;
   requestAlarms: () => void;
-  addAlarm: (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => void;
-  editAlarm: (id: string, time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => void;
+  addAlarm: (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean, stopMethodId: string) => void;
+  editAlarm: (
+    id: string,
+    time: string,
+    daysOfWeek: DayOfWeek[],
+    isEnabled: boolean,
+    stopMethodId: string,
+  ) => void;
   deleteAlarm: (id: string) => void;
   sendPauseCommand: (durationMs: number) => void;
   sendStopCommand: () => void;
@@ -96,6 +102,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   const [ringingStatus, setRingingStatus] = useState<RingingStatus | null>(null);
   const clientRef = useRef<MqttClient | null>(null);
   const lastEdgeResponseAtRef = useRef<number | null>(null);
+  const lastVisibilityReconnectAtRef = useRef(0);
 
   const addLog = useCallback((text: string) => {
     const time = new Date().toLocaleTimeString("ja-JP", { hour12: false });
@@ -160,7 +167,9 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
       password: s.password || undefined,
       clean: true,
       connectTimeout: 8000,
-      reconnectPeriod: 0,
+      // 切断時にmqtt.js自身が自動再接続するようにする(0=無効だと、モバイルでの
+      // バックグラウンド遷移などで切れた際に誰も再接続を試みなくなってしまう)
+      reconnectPeriod: 4000,
     };
 
     const client = mqtt.connect(s.brokerUrl, options);
@@ -180,6 +189,14 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
           addLog(`購読開始: ${sTopic}, ${aTopic}, ${rTopic} (QoS 2)`);
         }
       });
+    });
+
+    client.on("reconnect", () => {
+      // 古いクライアントの取り置きイベントは無視する(disconnect()やvisibility復帰時の
+      // 強制再接続で既に別のクライアントに差し替わっている場合があるため)
+      if (clientRef.current !== client) return;
+      setStatus("connecting");
+      addLog("再接続を試みています…");
     });
 
     client.on("message", (topic, payload) => {
@@ -212,6 +229,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     });
 
     client.on("error", (err) => {
+      if (clientRef.current !== client) return;
       setStatus("error");
       setEdgeStatus("unknown");
       addLog(`エラー: ${err.message}`);
@@ -219,7 +237,12 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     });
 
     client.on("close", () => {
-      setStatus((prev) => (prev === "error" ? prev : "disconnected"));
+      if (clientRef.current !== client) return;
+      // reconnectPeriod > 0 なので、close は「再接続を試みる直前」にも都度発火する。
+      // status を disconnected にしてしまうと、実際には裏で再接続中なのに
+      // 「接続」ボタンが押せる(＝connect()が早期returnして何も起きない)ように見えてしまうため、
+      // 明示的な切断(disconnect())以外はいったん connecting のままにしておく。
+      setStatus((prev) => (prev === "error" ? prev : "connecting"));
       setEdgeStatus("unknown");
     });
   }, [addLog, notify, settings]);
@@ -242,6 +265,29 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     autoConnectAttemptedRef.current = true;
     connect();
   }, [settings.brokerUrl, settings.deviceId, connect]);
+
+  // アプリがバックグラウンドから復帰した際に接続を確認し、切れていれば再接続する。
+  // モバイルではバックグラウンド中にOSがWebSocketやタイマーを止めることがあり、
+  // mqtt.js自身の自動再接続(reconnectPeriod)だけでは復帰時にすぐ繋がらない場合があるため、
+  // フォアグラウンド復帰を検知したら念のため既存クライアントを破棄して繋ぎ直す。
+  // status は close のたびに connecting になり得るため判定に使わず、
+  // クライアント自身の connected フラグ(実際に接続確立済みかどうか)で判定する。
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (clientRef.current?.connected) return;
+      if (!settings.brokerUrl || !settings.deviceId) return;
+      const now = Date.now();
+      if (now - lastVisibilityReconnectAtRef.current < 3000) return;
+      lastVisibilityReconnectAtRef.current = now;
+      addLog("アプリがフォアグラウンドに復帰しました。接続を確認します…");
+      clientRef.current?.end(true);
+      clientRef.current = null;
+      connect();
+    };
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => document.removeEventListener("visibilitychange", handleVisible);
+  }, [settings.brokerUrl, settings.deviceId, connect, addLog]);
 
   const publishCommand = useCallback(
     (payload: unknown) => {
@@ -274,8 +320,8 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   }, [publishCommand]);
 
   const addAlarm = useCallback(
-    (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => {
-      publishCommand(buildAddCommand(time, daysOfWeek, isEnabled));
+    (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean, stopMethodId: string) => {
+      publishCommand(buildAddCommand(time, daysOfWeek, isEnabled, stopMethodId));
       // add はエッジ側から一覧の自動返信が来ない前提のため、直後に list を送って更新する。
       publishCommand(buildListCommand());
     },
@@ -283,8 +329,14 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   );
 
   const editAlarm = useCallback(
-    (id: string, time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean) => {
-      publishCommand(buildEditCommand(id, time, daysOfWeek, isEnabled));
+    (
+      id: string,
+      time: string,
+      daysOfWeek: DayOfWeek[],
+      isEnabled: boolean,
+      stopMethodId: string,
+    ) => {
+      publishCommand(buildEditCommand(id, time, daysOfWeek, isEnabled, stopMethodId));
       publishCommand(buildListCommand());
     },
     [publishCommand],
@@ -321,6 +373,8 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   // ringing_status ポーリング
   useEffect(() => {
     if (status !== "connected") {
+      // ブローカー切断に同期してringing状態をリセットする
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRingingStatus(null);
       return;
     }

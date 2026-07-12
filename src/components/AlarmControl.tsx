@@ -10,14 +10,19 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
+import FormControl from "@mui/material/FormControl";
+import FormLabel from "@mui/material/FormLabel";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
-import Chip from "@mui/material/Chip";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import CloudOffIcon from "@mui/icons-material/CloudOff";
@@ -25,6 +30,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import Alert from "@mui/material/Alert";
 import { useMqtt } from "@/contexts/MqttProvider";
 import { useNotify } from "@/contexts/NotificationProvider";
+import { useStopMethods } from "@/contexts/StopMethodProvider";
 import { useAppReadiness } from "@/hooks/useAppReadiness";
 import { blockReasonLabel } from "@/lib/appState";
 import { formatDaysOfWeek, type Alarm, type DayOfWeek } from "@/lib/alarm";
@@ -47,6 +53,7 @@ type DialogMode = { kind: "add" } | { kind: "edit"; alarm: Alarm };
 export default function AlarmControl() {
   const { alarms, alarmsUpdatedAt, addAlarm, editAlarm, deleteAlarm } = useMqtt();
   const { alarmManagement } = useAppReadiness();
+  const { stopMethods } = useStopMethods();
   const notify = useNotify();
   const ready = alarmManagement.kind === "ready";
 
@@ -54,6 +61,7 @@ export default function AlarmControl() {
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
   const [timeInput, setTimeInput] = useState(defaultTimeValue());
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>(["Mon", "Tue", "Wed", "Thu", "Fri"]);
+  const [selectedStopMethodId, setSelectedStopMethodId] = useState("");
 
   // Saving indicator
   const [saving, setSaving] = useState(false);
@@ -84,24 +92,32 @@ export default function AlarmControl() {
   const openAddDialog = () => {
     setTimeInput(defaultTimeValue());
     setSelectedDays(["Mon", "Tue", "Wed", "Thu", "Fri"]);
+    setSelectedStopMethodId("");
     setDialogMode({ kind: "add" });
   };
 
   const openEditDialog = (alarm: Alarm) => {
     setTimeInput(alarm.time);
     setSelectedDays(alarm.days_of_week as DayOfWeek[]);
+    setSelectedStopMethodId(alarm.stop_method_id ?? "");
     setDialogMode({ kind: "edit", alarm });
   };
 
   const handleSave = () => {
-    if (!timeInput) return;
+    if (!timeInput || !selectedStopMethodId) return;
     saveRequestedAtRef.current = Date.now();
     setSaving(true);
 
     if (dialogMode?.kind === "add") {
-      addAlarm(timeInput, selectedDays, true);
+      addAlarm(timeInput, selectedDays, true, selectedStopMethodId);
     } else if (dialogMode?.kind === "edit") {
-      editAlarm(dialogMode.alarm.id, timeInput, selectedDays, dialogMode.alarm.is_enabled);
+      editAlarm(
+        dialogMode.alarm.id,
+        timeInput,
+        selectedDays,
+        dialogMode.alarm.is_enabled,
+        selectedStopMethodId,
+      );
     }
   };
 
@@ -112,14 +128,15 @@ export default function AlarmControl() {
   };
 
   const handleToggle = (alarm: Alarm) => {
-    editAlarm(alarm.id, alarm.time, alarm.days_of_week as DayOfWeek[], !alarm.is_enabled);
+    if (!alarm.stop_method_id) return;
+    editAlarm(alarm.id, alarm.time, alarm.days_of_week as DayOfWeek[], !alarm.is_enabled, alarm.stop_method_id);
   };
 
   const isOpen = dialogMode !== null;
   const isEdit = dialogMode?.kind === "edit";
 
   return (
-    <Box sx={{ position: "relative", height: "100%", bgcolor: "#000000", color: "#ffffff", display: "flex", flexDirection: "column" }}>
+    <Box sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
       <Backdrop open={saving} sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}>
         <Stack spacing={2} sx={{ alignItems: "center", color: "#fff" }}>
           <CircularProgress color="inherit" />
@@ -147,7 +164,11 @@ export default function AlarmControl() {
           </Typography>
         ) : (
           <List disablePadding>
-            {alarms.map((alarm, index) => (
+            {alarms.map((alarm, index) => {
+              const stopMethod = alarm.stop_method_id
+                ? stopMethods.find((m) => m.id === alarm.stop_method_id)
+                : undefined;
+              return (
               <Box key={alarm.id}>
                 <ListItem
                   disableGutters
@@ -166,6 +187,7 @@ export default function AlarmControl() {
                     secondary={
                       <Typography variant="body2" sx={{ color: alarm.is_enabled ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)", mt: 0.5 }}>
                         {formatDaysOfWeek(alarm.days_of_week as DayOfWeek[])}
+                        {stopMethod ? ` ・ ${stopMethod.label}` : " ・ 停止方法未設定"}
                       </Typography>
                     }
                   />
@@ -177,17 +199,14 @@ export default function AlarmControl() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                     disabled={!ready}
-                    sx={{
-                      "& .MuiSwitch-switchBase.Mui-checked": { color: "#34C759" },
-                      "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#34C759" },
-                    }}
                   />
                 </ListItem>
                 {index < alarms.length - 1 && (
                   <Divider sx={{ borderColor: "rgba(255, 255, 255, 0.12)" }} />
                 )}
               </Box>
-            ))}
+              );
+            })}
           </List>
         )}
       </Box>
@@ -198,19 +217,22 @@ export default function AlarmControl() {
         onClose={() => !saving && setDialogMode(null)}
         fullWidth
         maxWidth="xs"
-        sx={{
-          "& .MuiDialog-paper": {
-            bgcolor: "#1c1c1e",
-            color: "#fff",
-            borderRadius: 4,
-            backgroundImage: "none",
-          }
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: "rgba(20, 20, 20, 0.92)",
+              backdropFilter: "blur(20px)",
+              backgroundImage: "none",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 4,
+            },
+          },
         }}
       >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 600, pb: 0 }}>
+        <DialogTitle sx={{ textAlign: "center", fontWeight: 700 }}>
           {isEdit ? "アラームを編集" : "アラームを追加"}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ pt: "8px !important" }}>
           {/* Time Picker */}
           <TextField
             type="time"
@@ -218,66 +240,128 @@ export default function AlarmControl() {
             onChange={(e) => setTimeInput(e.target.value)}
             disabled={saving}
             fullWidth
-            slotProps={{ htmlInput: { style: { fontSize: "2.5rem", fontWeight: 300, textAlign: "center", color: "#fff", letterSpacing: "0.05em" } } }}
+            variant="standard"
+            slotProps={{ input: { disableUnderline: true } }}
             sx={{
               mt: 2,
-              mb: 3,
-              "& .MuiOutlinedInput-root": {
-                "& fieldset": { border: "none" },
+              mb: 4,
+              "& .MuiInputBase-input": {
+                textAlign: "center",
+                fontSize: "2.5rem",
+                fontWeight: 200,
+                lineHeight: 1.3,
+                letterSpacing: "0.04em",
+                py: 1,
               },
             }}
           />
 
           {/* Weekday Selector */}
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: "0.7rem" }}>
-            繰り返す曜日
-          </Typography>
-          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 0.5 }}>
-            {ALL_DAYS.map(day => {
-              const selected = selectedDays.includes(day);
-              const isSat = day === "Sat";
-              const isSun = day === "Sun";
-              const selectedColor = isSat ? "#0a84ff" : isSun ? "#ff453a" : "#30d158";
-              return (
-                <Chip
+          <FormControl component="fieldset" fullWidth disabled={saving}>
+            <FormLabel
+              component="legend"
+              sx={{
+                mb: 1.5,
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                "&.Mui-focused": { color: "text.secondary" },
+              }}
+            >
+              繰り返す曜日
+            </FormLabel>
+            <ToggleButtonGroup
+              value={selectedDays}
+              onChange={(_event, next: DayOfWeek[]) => setSelectedDays(next)}
+              disabled={saving}
+              sx={{
+                display: "flex",
+                width: "100%",
+                gap: 1,
+                // ToggleButtonGroupは連結ボタン(セグメントコントロール)向けに
+                // 隣接ボタンの左境界線・角丸・マージンを自動で潰すため、
+                // 独立した丸ボタンとして揃えるにはグループ側で明示的に打ち消す
+                "& .MuiToggleButtonGroup-grouped": {
+                  margin: 0,
+                  border: "1px solid rgba(255, 255, 255, 0.14) !important",
+                  borderRadius: "50% !important",
+                },
+              }}
+            >
+              {ALL_DAYS.map((day) => (
+                <ToggleButton
                   key={day}
-                  label={DAY_LABELS[day]}
-                  onClick={() => {
-                    if (saving) return;
-                    setSelectedDays(prev =>
-                      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-                    );
-                  }}
+                  value={day}
                   sx={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
+                    flex: "1 1 0",
+                    minWidth: 0,
+                    aspectRatio: "1 / 1",
+                    p: 0,
                     fontWeight: 700,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    bgcolor: selected ? selectedColor : "rgba(255,255,255,0.08)",
-                    color: selected ? "#fff" : isSat ? "#0a84ff" : isSun ? "#ff453a" : "rgba(255,255,255,0.55)",
-                    transition: "background-color 0.15s ease, transform 0.1s ease",
-                    "&:hover": {
-                      bgcolor: selected ? selectedColor : "rgba(255,255,255,0.14)",
-                      transform: "scale(1.08)",
+                    fontSize: "0.9rem",
+                    color: "text.secondary",
+                    transition: "transform 120ms ease, background-color 120ms ease",
+                    "&:hover": { bgcolor: "rgba(255, 255, 255, 0.08)" },
+                    "&.Mui-selected": {
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      transform: "scale(1.05)",
+                      "&:hover": { bgcolor: "primary.dark" },
                     },
-                    "&:active": { transform: "scale(0.95)" },
-                    "& .MuiChip-label": { px: 0 },
-                    opacity: saving ? 0.5 : 1,
                   }}
-                />
-              );
-            })}
-          </Box>
+                >
+                  {DAY_LABELS[day]}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </FormControl>
+
+          {/* Stop Method Selector */}
+          <FormControl component="fieldset" fullWidth disabled={saving} sx={{ mt: 3 }}>
+            <FormLabel
+              component="legend"
+              sx={{
+                mb: 1,
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                "&.Mui-focused": { color: "text.secondary" },
+              }}
+            >
+              停止方法（必須）
+            </FormLabel>
+            {stopMethods.length === 0 ? (
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                先に「停止」タブの「停止方法」から位置情報ベースの停止方法を登録してください。
+              </Alert>
+            ) : (
+              <Select
+                value={selectedStopMethodId}
+                onChange={(e) => setSelectedStopMethodId(e.target.value)}
+                displayEmpty
+                size="small"
+                fullWidth
+              >
+                <MenuItem value="" disabled>
+                  停止方法を選択してください
+                </MenuItem>
+                {stopMethods.map((method) => (
+                  <MenuItem key={method.id} value={method.id}>
+                    {method.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            )}
+          </FormControl>
         </DialogContent>
-        <DialogActions sx={{ flexDirection: "column", p: 2, gap: 1 }}>
-          <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
+        <DialogActions sx={{ flexDirection: "column", p: 3, pt: 1, gap: 2 }}>
+          <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
             <Button
               onClick={() => !saving && setDialogMode(null)}
+              color="inherit"
               fullWidth
               disabled={saving}
-              sx={{ color: "#ff453a", borderRadius: 2, py: 1.2 }}
+              sx={{ borderRadius: 2, py: 1.5 }}
             >
               キャンセル
             </Button>
@@ -285,8 +369,8 @@ export default function AlarmControl() {
               onClick={handleSave}
               variant="contained"
               fullWidth
-              disabled={saving || !timeInput}
-              sx={{ borderRadius: 2, py: 1.2 }}
+              disabled={saving || !timeInput || !selectedStopMethodId}
+              sx={{ borderRadius: 2, py: 1.5 }}
             >
               保存
             </Button>
@@ -295,9 +379,10 @@ export default function AlarmControl() {
             <Button
               onClick={handleDelete}
               startIcon={<DeleteIcon />}
+              color="error"
               fullWidth
               disabled={saving}
-              sx={{ color: "#ff453a", borderRadius: 2, py: 1 }}
+              sx={{ borderRadius: 2, py: 1.2 }}
             >
               アラームを削除
             </Button>

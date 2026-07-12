@@ -3,43 +3,49 @@
 Raspberry Pi 上で動く `eager-alarm-edge`（アラームスケジューラ）を MQTT でリモート制御する
 IoT アプリ。PWA化を見据えた Next.js (App Router) + Material UI (MUI) + TypeScript 構成です。
 
-画面は5つのタブに分かれています。
+下部のボトムナビゲーションに3つのタブがあります（「停止」タブはさらにサブタブに分かれます）。
 
-- **MQTT設定** — ブローカーへの接続設定、簡易な ON/OFF コマンド送信、通信ログ。
-  ブローカーURL・デバイスIDが確定済み（`.env.local`またはlocalStorageに保存済み）の場合、
-  アプリ起動時に一度だけ自動接続を試みる（`src/contexts/MqttProvider.tsx`）
-- **アラーム** — `eager-alarm-edge` のアラーム追加・一覧・削除（`src/components/AlarmControl.tsx`）
-- **アラームを止める** — 歩行検知状況を一目で表示し、「アラームを止める」ボタンで
-  停止シーケンスを開始する。歩行検知中は `pause` を、登録地点への到達時は `stop` を自動送信する
-  （`src/components/StopAlarmControl.tsx`）
-- **位置情報** — アラームを完全停止する地点（現在地）と到達判定半径を登録する
-  （`src/components/LocationSettings.tsx`）
-- **ジャイロ** — スマホの傾き・回転速度・加速度センサー、歩行検知結果の動作確認
-  （`src/components/GyroTest.tsx`）
+- **設定** — MQTT設定 / 位置情報 / 歩行検知 の3つの設定画面へのメニュー
+  - **MQTT設定** — ブローカーへの接続設定、簡易な ON/OFF コマンド送信、通信ログ。
+    ブローカーURL・デバイスIDが確定済み（`.env.local`またはlocalStorageに保存済み）の場合、
+    アプリ起動時に一度だけ自動接続を試みる（`src/contexts/MqttProvider.tsx`）。
+    接続後の切断（モバイルでのバックグラウンド遷移によるWebSocket切断など）に対しては、
+    mqtt.js自身の自動再接続（`reconnectPeriod`）に加えて、アプリがフォアグラウンドに
+    復帰した際（`visibilitychange`）にも生存確認を行い、必要なら接続を張り直す
+  - **位置情報** — 現在地取得の許可状況の確認・取得開始（`src/components/LocationSettings.tsx`）。
+    停止地点そのものの登録は「停止」タブの「停止方法」で行う
+  - **歩行検知** — 加速度センサーの許可状況の確認・動作確認（`src/components/WalkSensorSettings.tsx`）
+- **アラーム** — `eager-alarm-edge` のアラーム追加・編集・削除（`src/components/AlarmControl.tsx`）。
+  時刻・繰り返す曜日・有効/無効に加え、**このアラームをどの停止方法で止めるか**を必須で選択する
+- **停止** — サブタブが2つあります
+  - **アラームを止める** — 鳴動中のアラーム状況（歩行検知状態、割り当てられた停止方法までの距離）を
+    表示し、手動で今すぐ止めるボタンも提供する（`src/components/StopAlarmControl.tsx`）
+  - **停止方法** — 位置情報ベースの停止方法（名前・地図で選んだ地点・到達判定半径）を登録・削除する
+    （`src/components/StopMethodSettings.tsx`）。いずれかのアラームに割り当て済みの停止方法は削除できない
 
 接続状態・アラーム一覧は `src/contexts/MqttProvider.tsx`、センサー値・歩行検知状態は
-`src/contexts/GyroProvider.tsx`、現在地・停止地点は `src/contexts/LocationProvider.tsx`、
-「アラームを止める」フローの有効/無効は `src/contexts/StopSequenceProvider.tsx` の
-Context でタブ間・ページ全体に共有されるため、タブを切り替えても再接続やセンサー購読・
-位置情報監視の再開は不要です。
+`src/contexts/WalkSensorProvider.tsx`、現在地は `src/contexts/LocationProvider.tsx`、
+登録済みの停止方法一覧は `src/contexts/StopMethodProvider.tsx` の Context でタブ間・ページ全体に
+共有されるため、タブを切り替えても再接続やセンサー購読・位置情報監視の再開は不要です。
 
 ### 機能の利用可否（状態の代数化）
 
-edgeデバイスの接続状況・位置情報の許可状況・アラーム停止方法の有無から「今どの機能が使えるか」を
+MQTTブローカーへの接続状況・edgeデバイスの生存状況から「今アラーム関連の操作を行ってよいか」を
 一意に導出できるよう、`src/lib/appState.ts` に代数的データ型(discriminated union)と導出関数を
 まとめています。
 
-- `DeviceConnection` — edgeデバイスとのMQTT接続状態
-- `WalkDetectionReadiness` / `LocationDetectionReadiness` — 歩行検知・位置情報それぞれが使える状態か
-- `StopMethod` — 上記2つから導出される「アラームを止める」ために今使える手段の組み合わせ
-  （`none` / `walk-only` / `location-only` / `walk-and-location`）
-- `StopFlowReadiness` / `AlarmManagementReadiness` — 各タブの操作を許可してよいかの最終判定。
-  ブロックされている場合は理由(`BlockReason[]`)を持つ
+- `BrokerConnection` — MQTTブローカーへの接続状態
+- `EdgeDeviceStatus`（`src/contexts/MqttProvider.tsx`） — edgeデバイス自体の生存状況
+  （ブローカー接続とは別物として扱う。詳細は後述の「edgeデバイスのオンライン/オフライン検知」参照）
+- `AlarmManagementReadiness` — アラームの追加/編集/削除・停止方法の割り当て・手動停止を
+  許可してよいかの最終判定。ブロックされている場合は理由(`BlockReason[]`)を持つ
 
-これらは `src/hooks/useAppReadiness.ts` が各Providerの生の状態から都度導出する純粋な関数で、
+これは `src/hooks/useAppReadiness.ts` が `MqttProvider` の生の状態から都度導出する純粋な関数で、
 保持している状態そのものではありません。`AlarmControl`/`StopAlarmControl` はこの結果だけを見て
 ボタンの活性/非活性や表示を決めるため、「この状態のUIから何ができるか」が型として明確になります。
 問題がない場合は理由の表示自体を出さないため、通常時の画面は要素が少なくシンプルなままです。
+なお、停止方法(位置情報)自体の登録・削除はブラウザのlocalStorageのみで完結する操作のため、
+このゲーティングの対象外です（MQTT接続の有無に関わらずいつでも行えます）。
 
 ### エラーの通知
 
@@ -57,13 +63,14 @@ edgeデバイスの接続状況・位置情報の許可状況・アラーム停�
 ```
 
 - トピック: `eager-alarm/<デバイスID>/command`（コマンド送信）,
-  `.../status`（ON/OFFデモのack）, `.../alarms`（アラーム一覧の返信）
+  `.../status`（生存確認応答、旧ON/OFFデモのackも同トピック）, `.../alarms`（アラーム一覧の返信）,
+  `.../ringing_status`（鳴動状況の返信）
 - ブローカーは **自分で用意した HiveMQ Cloud**（TLS 認証付き）を使用。
   - ブラウザ: WebSocket `wss://xxxx.s1.eu.hivemq.cloud:8884/mqtt`
   - Pi: `xxxx.s1.eu.hivemq.cloud:8883`（TLS）
 - 実装: アプリ側 `src/contexts/MqttProvider.tsx`・`src/lib/mqtt.ts`・`src/lib/alarm.ts` /
   Pi側は別リポジトリ `eager-alarm-edge`（Rust）。旧ON/OFFデモ用の購読スクリプトは `pi/subscriber.py`
-- **配信品質**: アラーム操作（`add`/`delete`/`pause`/`stop`）は **QoS 2（Exactly Once）**
+- **配信品質**: アラーム操作（`add`/`edit`/`delete`/`pause`/`stop`）は **QoS 2（Exactly Once）**
   で publish・subscribe します。ネットワークが不安定でも操作が重複したり失われたりしないことを保証するためです
 
 ### 実機無しでのテスト（edge-mock）
@@ -75,22 +82,28 @@ edgeデバイスの接続状況・位置情報の許可状況・アラーム停�
 npm run mock:edge
 ```
 
-### アラームAPI（`eager-alarm-edge` 側の仕様）
+### アラームAPI（`eager-alarm-edge` 側の仕様、v2）
 
 `command` トピックへ publish する JSON の `type` で振り分けられます。
 
 | type | ペイロード | 説明 |
 |---|---|---|
-| `add` | `{"type":"add","wakeup_time":"YYYY-MM-DD HH:MM:SS"}` | アラーム追加。日時はデバイスのローカル時刻 |
+| `add` | `{"type":"add","time":"HH:MM","days_of_week":["Mon","Wed"],"is_enabled":true,"stop_method_id":"<uuid>"}` | アラーム追加。時刻はデバイスのローカル時刻。曜日は繰り返し。id はedge側で生成 |
+| `edit` | `{"type":"edit","id":"<uuid>","time":"HH:MM","days_of_week":[...],"is_enabled":true,"stop_method_id":"<uuid>"}` | 既存アラームの更新（有効/無効の切り替えもこれで行う） |
 | `delete` | `{"type":"delete","id":"<uuid>"}` | アラーム削除 |
-| `list` | `{"type":"list"}` | 一覧取得。応答は `alarms` トピックに `[{id, wakeup_time}, ...]`（起床時刻の早い順） |
+| `list` | `{"type":"list"}` | 一覧取得。応答は `alarms` トピックに `[{id, time, days_of_week, is_enabled, stop_method_id}, ...]`（時刻の早い順） |
 | `pause` | `{"type":"pause","duration_ms":5000}` | 鳴動中のアラームを `duration_ms` ミリ秒だけ一時停止する。明示的な resume は無く、時間経過で自動再開する想定 |
-| `stop` | `{"type":"stop"}` | 鳴動中のアラームを完全に停止する。`pause`と異なり自動再開は無い |
+| `stop` | `{"type":"stop"}` | 鳴動中のアラームを完全に停止する（アラーム自体は削除されず、次回の曜日に再スケジュールされる） |
 | `status` | `{"type":"status"}` | 生存確認。edgeデバイスは `status` トピックへ即座に応答する想定（ペイロード例: `{"online":true}`。アプリ側は応答の有無だけで判定するため内容は問わない） |
+| `ringing_status` | `{"type":"ringing_status"}` | 鳴動状況の取得。応答は `ringing_status` トピックに `{"is_ringing":bool,"ringing_ids":["<uuid>",...]}` |
 
-アプリは接続確立時に自動で `list` を送信し、以後は `alarms` トピックのメッセージで
-一覧を更新します（`src/lib/alarm.ts` の `buildAddCommand` / `buildDeleteCommand` / `buildListCommand` /
-`buildPauseCommand` / `buildStopCommand` / `buildStatusCommand`）。
+`stop_method_id` はブラウザ側（`StopMethodProvider`、下記参照）が管理する位置情報ベースの停止方法の
+IDをそのまま保持して返すだけの不透明な値で、edge側はこの値の意味を解釈しません。
+
+アプリは接続確立時に自動で `list`/`ringing_status` を送信し、以後は `alarms`/`ringing_status`
+トピックのメッセージで一覧・鳴動状況を更新します（`src/lib/alarm.ts` の各 `build*Command` 関数）。
+`ringing_status` はさらに3秒おきにポーリングして最新の鳴動状況を維持します
+（`src/contexts/MqttProvider.tsx`）。
 
 ### edgeデバイスのオンライン/オフライン検知
 
@@ -107,31 +120,50 @@ npm run mock:edge
 
 状態は `useMqtt().edgeStatus`（`"unknown" | "online" | "offline"`）として公開され、
 「MQTT設定」タブでブローカー接続状態とは別のChipとして表示されるほか、
-`src/lib/appState.ts` の `deriveAlarmManagementReadiness` / `deriveStopFlowReadiness` が
-アラーム関連タブの操作可否判定にも利用します（edgeがオフラインの間は追加/削除/アラームを止める操作をブロック）。
+`src/lib/appState.ts` の `deriveAlarmManagementReadiness` が
+アラーム関連タブの操作可否判定にも利用します（edgeがオフラインの間は追加/削除/手動停止操作をブロック）。
+
+### 停止方法（位置情報ベース）
+
+「アラームを止める」ためのやり方（今のところ位置情報ベースのみ対応）を、名前を付けて複数登録できます。
+ブラウザのlocalStorageのみで完結する概念で、edgeデバイスには座標そのものは送信しません
+（`src/lib/stopMethod.ts` の `StopMethod` 型、`src/contexts/StopMethodProvider.tsx`）。
+
+- 登録: 「停止」タブ→「停止方法」→「追加」。まず全画面の地図で地点を選び、次に名前・到達判定半径を
+  入力する2ステップのフロー。地図には [Leaflet](https://leafletjs.com/) + OpenStreetMapタイルを使用
+  （`src/components/LocationPickerMap.tsx`、APIキー不要）。Leafletはwindow/documentに依存しSSR非対応の
+  ため `next/dynamic(..., { ssr: false })` で読み込みます
+- 削除: いずれかのアラームに割り当て済みの停止方法は削除できません（`src/components/StopMethodSettings.tsx`
+  が `useMqtt().alarms` を見て使用中かどうかを判定し、削除ボタンを無効化する）
+- アラームへの割り当て: 「アラーム」タブの追加/編集ダイアログで、登録済みの停止方法から1つを**必須で**選択する
+  （`src/lib/alarm.ts` の `Alarm.stop_method_id` / `AlarmCommand` の `add`/`edit`）
 
 ### 「アラームを止める」フロー（歩行検知 + 位置情報）
 
-「アラームを止める」タブのボタンを押すと停止シーケンスが**有効(armed)**になり、以下の2つが
-MQTT接続中に限り自動的に動作します。実機へ意図せずコマンドが送られないよう、既定は無効で、
-ページを再読み込みすると無効に戻ります（`src/contexts/StopSequenceProvider.tsx`、非永続）。
+アラームごとに紐づいた停止方法があらかじめ分かっているため、手動で「有効化」する操作は無く、
+鳴動中は自動的に以下の2つがMQTT接続中に限り動作します。
 
-1. **歩行検知中は `pause` を自動送信**（一時停止）
+1. **歩行検知中は `pause` を自動送信**（一時停止。停止方法の設定に関わらず、鳴動中いつでも働く）
    - 歩行検知: `src/hooks/useWalkingDetector.ts`。`devicemotion` の加速度（重力込み）の大きさが
      立ち上がり→下降に転じる「ピーク」を歩数としてカウントし、直近3秒間に3歩以上あれば歩行中と
      判定する簡易的なヒューリスティックです。しきい値は端末や持ち方によって精度が変わるため、
      実機で試しながら定数を調整してください
    - 送信ロジック: `src/components/WalkPauseBridge.tsx`（UIを持たない橋渡しコンポーネント）。
-     歩行検知中は2秒おきに `duration_ms: 5000` の `pause` を再送し、歩行が続く限り停止状態を
-     延長します。歩行が止まれば再送も止まります
-2. **登録地点に到達したら `stop` を1回送信**（完全停止）してフローを自動解除
-   - 現在地の監視・停止地点の登録: `src/contexts/LocationProvider.tsx`（「位置情報」タブから設定）。
-     `navigator.geolocation.watchPosition` で現在地を継続取得し、登録地点との距離を
-     ハーバーサイン公式（`src/lib/geo.ts`）で計算します
+     `ringing_status.is_ringing` が true かつ歩行検知中の間、2秒おきに `duration_ms: 5000` の
+     `pause` を再送し、歩行が続く限り停止状態を延長します。歩行が止まれば再送も止まります
+2. **鳴動中のアラームに割り当てられた停止方法の地点に到達したら `stop` を1回送信**（完全停止）
+   - 現在地の監視: `src/contexts/LocationProvider.tsx`。`navigator.geolocation.watchPosition` で
+     現在地を継続取得し、`ringing_status.ringing_ids` に含まれる各アラームの `stop_method_id` を
+     `StopMethodProvider` の一覧から解決した地点との距離をハーバーサイン公式（`src/lib/geo.ts`）で
+     計算します
    - 送信ロジック: `src/components/ArrivalStopBridge.tsx`（UIを持たない橋渡しコンポーネント）。
-     登録地点から半径内に入った瞬間に `stop` を1回だけ送信し、`markStopped()` でフローを自動的に
-     無効化します（同じ地点に留まり続けても連投はしません）
+     鳴動中のアラームがあれば自動的に現在地監視を開始し、割り当てられた停止方法の半径内に入った
+     瞬間にそのアラームぶんだけ `stop` を1回送信します（同じアラームへの連投はしません。複数アラームが
+     同時に鳴動している場合、`stop` コマンド自体はどのアラームを止めるか指定できない簡易な仕様のため、
+     実質的には最初に到達した1件で全体が止まります）
    - 位置情報の取得にもセキュアコンテキスト（HTTPS または localhost）が必要です
+   - 「アラームを止める」タブでは鳴動中のアラームの状況（先頭の1件の停止方法・距離）を表示し、
+     手動で今すぐ止めるボタンも常に使えます（GPS精度が悪い場合などのフォールバック）
 
 ### 認証情報の扱い（テスト / 本番）
 

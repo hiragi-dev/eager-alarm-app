@@ -9,6 +9,7 @@ import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import InfoPopoverButton from "@/components/InfoPopoverButton";
 import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
 
 function fmt(n: number | null | undefined, unit: string): string {
@@ -82,11 +83,15 @@ export default function WalkSensorSettings() {
     <Stack spacing={3}>
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            加速度 (DeviceMotion / acceleration)
-          </Typography>
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", mb: 2 }}>
+            <Typography variant="h6">加速度 (DeviceMotion / acceleration)</Typography>
+            <InfoPopoverButton>
+              上段は重力の影響を除いた値です（端末によっては非対応で常に — になります）。
+              下段は重力を含む値で、ほぼ全端末で対応しています。
+            </InfoPopoverButton>
+          </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-            重力の影響を除いた値。端末によっては非対応で常に — になります。
+            重力除外
           </Typography>
           <Stack direction="row" spacing={3} sx={{ mb: 2 }}>
             <StatBox label="x" value={fmt(motion?.accelerationX, "m/s²")} />
@@ -95,7 +100,7 @@ export default function WalkSensorSettings() {
           </Stack>
 
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-            重力を含む値（ほぼ全端末で対応）
+            重力込み
           </Typography>
           <Stack direction="row" spacing={3}>
             <StatBox label="x" value={fmt(motion?.accelerationGravityX, "m/s²")} />
@@ -120,7 +125,13 @@ export default function WalkSensorSettings() {
             spacing={1}
             sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}
           >
-            <Typography variant="h6">歩行検知状態</Typography>
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+              <Typography variant="h6">歩行検知状態</Typography>
+              <InfoPopoverButton>
+                加速度センサーの変動から簡易的に歩行を検知しています。アラームが鳴っている間、
+                歩行中はこの検知結果を使って自動的に一時停止します。
+              </InfoPopoverButton>
+            </Stack>
             <Chip
               size="small"
               label={isWalking ? "歩行中" : "静止中"}
@@ -128,8 +139,7 @@ export default function WalkSensorSettings() {
             />
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            加速度センサーの変動から簡易的に歩行を検知しています（検知した歩数: {stepCount}）。
-            この検知結果を使ってPiへコマンドを送るには「アラームを止める」タブを使用してください。
+            検知した歩数: {stepCount}
           </Typography>
         </CardContent>
       </Card>

@@ -1,54 +1,58 @@
 "use client";
 
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Alert from "@mui/material/Alert";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
-import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
+import PlaceIcon from "@mui/icons-material/Place";
 import { useLocation } from "@/contexts/LocationProvider";
-import { useStopSequence } from "@/contexts/StopSequenceProvider";
-import { useAppReadiness } from "@/hooks/useAppReadiness";
 import { useMqtt } from "@/contexts/MqttProvider";
+import { useStopMethods } from "@/contexts/StopMethodProvider";
+import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
+import { useAppReadiness } from "@/hooks/useAppReadiness";
 import { blockReasonLabel } from "@/lib/appState";
+import { distanceMeters } from "@/lib/geo";
 
 function fmtDistance(m: number | null): string {
   if (m == null) return "—";
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${m.toFixed(0)} m`;
 }
 
-function stopMethodLabel(method: ReturnType<typeof useAppReadiness>["stopMethod"]): string {
-  switch (method.kind) {
-    case "walk-and-location":
-      return "歩行検知 + 位置情報";
-    case "walk-only":
-      return "歩行検知のみ";
-    case "location-only":
-      return "位置情報のみ";
-    case "none":
-      return "未設定";
-  }
-}
-
+/**
+ * 「アラームを止める」サブタブ。アラームごとに事前設定された停止方法(位置情報)を
+ * 自動的に監視して到達したら停止する(実際の送信は ArrivalStopBridge が担う)ため、
+ * ここでは現在の状況表示と、手動で今すぐ止めるボタンのみを提供する。
+ * 複数アラームが同時に鳴動している場合は先頭の1件の停止方法のみ表示する(簡易表示)。
+ */
 export default function StopAlarmControl() {
   const { isWalking } = useWalkSensorContext();
-  const { distanceToTarget, hasArrived, target } = useLocation();
-  const { armed, arm, disarm, lastStoppedAt } = useStopSequence();
-  const { stopFlow, stopMethod } = useAppReadiness();
-  const { ringingStatus } = useMqtt();
+  const { currentPosition } = useLocation();
+  const { alarms, ringingStatus, sendStopCommand } = useMqtt();
+  const { stopMethods } = useStopMethods();
+  const { alarmManagement } = useAppReadiness();
 
-  const ready = stopFlow.kind === "ready";
-  const isRinging = ringingStatus?.is_ringing === true;
+  const ready = alarmManagement.kind === "ready";
+  const ringingIds = ringingStatus?.ringing_ids ?? [];
+  const isRinging = ringingIds.length > 0;
+  const ringingAlarm = isRinging ? (alarms.find((a) => a.id === ringingIds[0]) ?? null) : null;
+  const stopMethod = ringingAlarm?.stop_method_id
+    ? (stopMethods.find((m) => m.id === ringingAlarm.stop_method_id) ?? null)
+    : null;
+  const distanceToTarget =
+    stopMethod && currentPosition ? distanceMeters(currentPosition, stopMethod) : null;
+  const hasArrived =
+    distanceToTarget != null && stopMethod != null && distanceToTarget <= stopMethod.radiusMeters;
 
   return (
     <Box sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
       <Stack spacing={3} sx={{ flex: 1, overflowY: "auto" }}>
-        {stopFlow.kind === "blocked" && (
-          <Alert severity="warning">{stopFlow.reasons.map(blockReasonLabel).join(" / ")}</Alert>
+        {alarmManagement.kind === "blocked" && (
+          <Alert severity="warning">{alarmManagement.reasons.map(blockReasonLabel).join(" / ")}</Alert>
         )}
 
         {/* 歩行検知状況を一目でわかるように大きく表示 */}
@@ -67,48 +71,48 @@ export default function StopAlarmControl() {
                 <Typography variant="h4" component="div">
                   {isWalking ? "歩行を検知中" : "静止中"}
                 </Typography>
-                {armed && (
-                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                    停止シーケンス有効（{stopMethodLabel(stopMethod)}）
-                  </Typography>
-                )}
+                <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                  歩行中は自動的にアラームを一時停止します
+                </Typography>
               </Box>
             </Stack>
           </CardContent>
         </Card>
 
-        <Button
-          variant="contained"
-          size="large"
-          color={armed ? "inherit" : "error"}
-          onClick={armed ? disarm : arm}
-          disabled={!armed && !ready}
-        >
-          {armed ? "停止シーケンスを解除" : "アラームを止める"}
-        </Button>
-
-        {armed && target && (
+        {stopMethod ? (
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                停止地点までの距離
-              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
+                <PlaceIcon color="primary" fontSize="small" />
+                <Typography variant="body2" color="text.secondary">
+                  停止方法: {stopMethod.label} まで
+                </Typography>
+              </Stack>
               <Typography variant="h4">{fmtDistance(distanceToTarget)}</Typography>
               {hasArrived && (
                 <Alert severity="success" sx={{ mt: 2 }}>
-                  停止地点に到達しました。
+                  停止地点に到達しました。まもなく自動的に停止します。
                 </Alert>
               )}
             </CardContent>
           </Card>
+        ) : (
+          isRinging && (
+            <Alert severity="info">
+              このアラームには位置情報の停止方法が設定されていません。下のボタンで手動で止めてください。
+            </Alert>
+          )
         )}
 
-        {lastStoppedAt && (
-          <Alert severity="success">
-            {new Date(lastStoppedAt).toLocaleTimeString("ja-JP", { hour12: false })}{" "}
-            にアラームを完全に停止するコマンドを送信しました。
-          </Alert>
-        )}
+        <Button
+          variant="contained"
+          size="large"
+          color="error"
+          onClick={sendStopCommand}
+          disabled={!ready || !isRinging}
+        >
+          今すぐアラームを止める
+        </Button>
       </Stack>
 
       {/* アラームが鳴っていない場合のオーバーレイ */}

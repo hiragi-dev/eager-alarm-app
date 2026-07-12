@@ -9,10 +9,12 @@
  *   アプリと同じ .env.local の接続情報・デバイスIDを使う）
  *
  * v2 変更点:
- *   - アラームは `time` (HH:MM) + `days_of_week` + `is_enabled` で管理
+ *   - アラームは `time` (HH:MM) + `days_of_week` + `is_enabled` + `stop_method_id` で管理
  *   - add: id はエッジ（モック）側で生成
  *   - edit: 既存アラームを更新
  *   - stop: アラームは削除しない。次回の曜日に再スケジュール
+ *   - stop_method_id: ブラウザ側(StopMethodProvider)が管理する位置情報ベースの停止方法の
+ *     IDをそのまま保持して返すだけの不透明な値。エッジ側はこの値の意味を解釈しない
  */
 import { randomUUID } from "node:crypto";
 import mqtt from "mqtt";
@@ -41,7 +43,7 @@ const RINGING_HEARTBEAT_MS = 2000;
 const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 /**
- * @typedef {{ id: string, time: string, days_of_week: string[], is_enabled: boolean }} Alarm
+ * @typedef {{ id: string, time: string, days_of_week: string[], is_enabled: boolean, stop_method_id: string | null }} Alarm
  */
 
 /** @type {Alarm[]} */
@@ -93,6 +95,7 @@ function publishAlarms(client) {
       time: a.time,
       days_of_week: a.days_of_week,
       is_enabled: a.is_enabled,
+      stop_method_id: a.stop_method_id,
     }))
   );
   client.publish(ALARMS_TOPIC, payload, { qos: 2 }, (err) => {
@@ -113,10 +116,11 @@ function handleCommand(client, cmd) {
         time: cmd.time,
         days_of_week: cmd.days_of_week,
         is_enabled: cmd.is_enabled ?? true,
+        stop_method_id: cmd.stop_method_id ?? null,
       };
       alarmList.push(alarm);
       alarmList.sort((a, b) => a.time.localeCompare(b.time));
-      log(`✅ add id=${alarm.id} time=${alarm.time} days=[${alarm.days_of_week.join(",")}]`);
+      log(`✅ add id=${alarm.id} time=${alarm.time} days=[${alarm.days_of_week.join(",")}] stop_method_id=${alarm.stop_method_id}`);
       break;
     }
     case "edit": {
@@ -130,9 +134,10 @@ function handleCommand(client, cmd) {
         time: cmd.time ?? alarmList[idx].time,
         days_of_week: cmd.days_of_week ?? alarmList[idx].days_of_week,
         is_enabled: cmd.is_enabled ?? alarmList[idx].is_enabled,
+        stop_method_id: cmd.stop_method_id ?? alarmList[idx].stop_method_id,
       };
       alarmList.sort((a, b) => a.time.localeCompare(b.time));
-      log(`✅ edit id=${cmd.id} time=${alarmList[idx].time} enabled=${alarmList[idx].is_enabled}`);
+      log(`✅ edit id=${cmd.id} time=${alarmList[idx].time} enabled=${alarmList[idx].is_enabled} stop_method_id=${alarmList[idx].stop_method_id}`);
       break;
     }
     case "delete": {

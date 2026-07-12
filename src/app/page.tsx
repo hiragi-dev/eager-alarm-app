@@ -7,35 +7,36 @@ import Container from "@mui/material/Container";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
-import Stack from "@mui/material/Stack";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
 import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
-import Snackbar from "@mui/material/Snackbar";
-import Alert from "@mui/material/Alert";
 import AlarmControl from "@/components/AlarmControl";
 import AlarmIcon from "@mui/icons-material/Alarm";
-import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import SettingsIcon from "@mui/icons-material/Settings";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import ArrivalStopBridge from "@/components/ArrivalStopBridge";
 import LocationSettings from "@/components/LocationSettings";
 import MqttControl from "@/components/MqttControl";
 import StopAlarmControl from "@/components/StopAlarmControl";
+import StopMethodSettings from "@/components/StopMethodSettings";
 import WalkPauseBridge from "@/components/WalkPauseBridge";
 import WalkSensorSettings from "@/components/WalkSensorSettings";
 import WalkSensorProvider from "@/contexts/WalkSensorProvider";
 import LocationProvider from "@/contexts/LocationProvider";
 import MqttProvider from "@/contexts/MqttProvider";
 import NotificationProvider from "@/contexts/NotificationProvider";
-import StopSequenceProvider from "@/contexts/StopSequenceProvider";
+import StopMethodProvider from "@/contexts/StopMethodProvider";
 import RingingAlert from "@/components/RingingAlert";
 
 type TabKey = "settings" | "alarms" | "stop";
 type SettingsViewKey = "menu" | "mqtt" | "location" | "walkSensor";
+type StopViewKey = "control" | "methods";
 
 export default function Home() {
   const [tab, setTab] = useState<TabKey>("alarms");
   const [settingsView, setSettingsView] = useState<SettingsViewKey>("menu");
+  const [stopView, setStopView] = useState<StopViewKey>("control");
 
   const navigationItems: Array<{ key: TabKey; label: string; icon: ReactNode }> = [
     { key: "settings", label: "設定", icon: <SettingsIcon /> },
@@ -43,15 +44,20 @@ export default function Home() {
     { key: "stop", label: "停止", icon: <StopCircleIcon /> },
   ];
 
+  const handleGoToStop = () => {
+    setStopView("control");
+    setTab("stop");
+  };
+
   return (
     <NotificationProvider>
       <MqttProvider>
         <WalkSensorProvider>
           <LocationProvider>
-            <StopSequenceProvider>
+            <StopMethodProvider>
               <WalkPauseBridge />
               <ArrivalStopBridge />
-              <RingingAlert onGoToStop={() => setTab("stop")} />
+              <RingingAlert onGoToStop={handleGoToStop} />
               <Box
                 sx={{
                   height: "100vh",
@@ -148,8 +154,24 @@ export default function Home() {
                   <Box role="tabpanel" hidden={tab !== "alarms"} sx={{ height: "100%" }}>
                     {tab === "alarms" && <AlarmControl />}
                   </Box>
-                  <Box role="tabpanel" hidden={tab !== "stop"} sx={{ height: "100%" }}>
-                    {tab === "stop" && <StopAlarmControl />}
+                  <Box role="tabpanel" hidden={tab !== "stop"} sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                    {tab === "stop" && (
+                      <>
+                        <Tabs
+                          value={stopView}
+                          onChange={(_event, value: StopViewKey) => setStopView(value)}
+                          variant="fullWidth"
+                          sx={{ mb: 2, flexShrink: 0 }}
+                        >
+                          <Tab label="アラームを止める" value="control" />
+                          <Tab label="停止方法" value="methods" />
+                        </Tabs>
+                        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                          {stopView === "control" && <StopAlarmControl />}
+                          {stopView === "methods" && <StopMethodSettings />}
+                        </Box>
+                      </>
+                    )}
                   </Box>
                 </Container>
 
@@ -211,7 +233,7 @@ export default function Home() {
                   </Container>
                 </Box>
               </Box>
-            </StopSequenceProvider>
+            </StopMethodProvider>
           </LocationProvider>
         </WalkSensorProvider>
       </MqttProvider>

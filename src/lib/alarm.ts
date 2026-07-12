@@ -1,16 +1,37 @@
 export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
-/** eager-alarm-edge の `eager-alarm/<id>/alarms` トピックで返される1件のアラーム */
+/**
+ * eager-alarm-edge の `eager-alarm/<id>/alarms` トピックで返される1件のアラーム。
+ * stop_method_id はブラウザ側(StopMethodProvider)で管理する位置情報ベースの
+ * 停止方法のIDを指す不透明な文字列で、edge側はこの値の意味を解釈しない
+ * (どのアラームがどの停止方法に紐づいているかを覚えておくためだけに保持・往復させる)。
+ * 本アプリのUIでは新規作成時に必須入力だが、edge側の実装都合や移行前のデータでは
+ * 欠落している場合もあるため型としてはnull許容にしている。
+ */
 export type Alarm = {
   id: string;
   time: string; // "HH:MM"
   days_of_week: DayOfWeek[];
   is_enabled: boolean;
+  stop_method_id: string | null;
 };
 
 export type AlarmCommand =
-  | { type: "add"; time: string; days_of_week: DayOfWeek[]; is_enabled: boolean }
-  | { type: "edit"; id: string; time: string; days_of_week: DayOfWeek[]; is_enabled: boolean }
+  | {
+      type: "add";
+      time: string;
+      days_of_week: DayOfWeek[];
+      is_enabled: boolean;
+      stop_method_id: string;
+    }
+  | {
+      type: "edit";
+      id: string;
+      time: string;
+      days_of_week: DayOfWeek[];
+      is_enabled: boolean;
+      stop_method_id: string;
+    }
   | { type: "delete"; id: string }
   | { type: "list" }
   | { type: "pause"; duration_ms: number }
@@ -23,12 +44,36 @@ export type RingingStatus = {
   ringing_ids: string[];
 };
 
-export function buildAddCommand(time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean): AlarmCommand {
-  return { type: "add", time, days_of_week: daysOfWeek, is_enabled: isEnabled };
+export function buildAddCommand(
+  time: string,
+  daysOfWeek: DayOfWeek[],
+  isEnabled: boolean,
+  stopMethodId: string,
+): AlarmCommand {
+  return {
+    type: "add",
+    time,
+    days_of_week: daysOfWeek,
+    is_enabled: isEnabled,
+    stop_method_id: stopMethodId,
+  };
 }
 
-export function buildEditCommand(id: string, time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean): AlarmCommand {
-  return { type: "edit", id, time, days_of_week: daysOfWeek, is_enabled: isEnabled };
+export function buildEditCommand(
+  id: string,
+  time: string,
+  daysOfWeek: DayOfWeek[],
+  isEnabled: boolean,
+  stopMethodId: string,
+): AlarmCommand {
+  return {
+    type: "edit",
+    id,
+    time,
+    days_of_week: daysOfWeek,
+    is_enabled: isEnabled,
+    stop_method_id: stopMethodId,
+  };
 }
 
 export function buildDeleteCommand(id: string): AlarmCommand {

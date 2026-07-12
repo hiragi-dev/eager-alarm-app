@@ -1,11 +1,5 @@
 export type GeoPoint = { lat: number; lng: number };
 
-/** アラームを完全停止する地点。到達判定はradiusMeters以内かどうかで行う */
-export type GeoTarget = GeoPoint & { radiusMeters: number; registeredAt: number };
-
-export const GEO_TARGET_STORAGE_KEY = "alarm-stop-location";
-export const DEFAULT_RADIUS_METERS = 20;
-
 /** 2地点間の距離をハーバーサイン公式で計算する（メートル） */
 export function distanceMeters(a: GeoPoint, b: GeoPoint): number {
   const EARTH_RADIUS_M = 6371000;

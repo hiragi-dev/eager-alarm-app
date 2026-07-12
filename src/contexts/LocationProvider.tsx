@@ -1,13 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import {
-  DEFAULT_RADIUS_METERS,
-  distanceMeters,
-  GEO_TARGET_STORAGE_KEY,
-  type GeoPoint,
-  type GeoTarget,
-} from "@/lib/geo";
+import type { GeoPoint } from "@/lib/geo";
 import { useNotify } from "@/contexts/NotificationProvider";
 
 type CurrentPosition = GeoPoint & { accuracy: number };
@@ -26,17 +20,14 @@ type LocationContextValue = {
   watching: boolean;
   startWatching: () => void;
   currentPosition: CurrentPosition | null;
-  target: GeoTarget | null;
-  registerCurrentLocationAsTarget: (radiusMeters?: number) => void;
-  setTargetRadius: (radiusMeters: number) => void;
-  clearTarget: () => void;
-  distanceToTarget: number | null;
-  hasArrived: boolean;
 };
 
 const LocationContext = createContext<LocationContextValue | null>(null);
 
-/** LocationProvider配下でのみ使用可能。現在地監視とアラーム停止地点の登録状態を共有する */
+/**
+ * LocationProvider配下でのみ使用可能。端末の現在地監視の状態のみを共有する
+ * (「どこで止めるか」という停止方法の定義は src/contexts/StopMethodProvider.tsx が持つ)。
+ */
 export function useLocation(): LocationContextValue {
   const ctx = useContext(LocationContext);
   if (!ctx) throw new Error("useLocation must be used within LocationProvider");
@@ -48,22 +39,14 @@ export default function LocationProvider({ children }: { children: React.ReactNo
   const [permission, setPermission] = useState<LocationPermission>("prompt");
   const [watching, setWatching] = useState(false);
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
-  const [target, setTargetState] = useState<GeoTarget | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
-  // 初回マウント時に対応状況・保存済みの停止地点を復元
+  // 初回マウント時に対応状況を判定
   useEffect(() => {
     const supported = typeof navigator !== "undefined" && "geolocation" in navigator;
     const secure = typeof window !== "undefined" && window.isSecureContext;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPermission(!supported ? "unsupported" : !secure ? "insecure" : "prompt");
-
-    try {
-      const raw = localStorage.getItem(GEO_TARGET_STORAGE_KEY);
-      if (raw) setTargetState(JSON.parse(raw));
-    } catch {
-      // ignore storage errors
-    }
   }, []);
 
   // アンマウント時に位置情報の監視を確実に止める
@@ -96,54 +79,11 @@ export default function LocationProvider({ children }: { children: React.ReactNo
     watchIdRef.current = id;
   }, [notify]);
 
-  const persistTarget = useCallback((next: GeoTarget | null) => {
-    setTargetState(next);
-    try {
-      if (next) localStorage.setItem(GEO_TARGET_STORAGE_KEY, JSON.stringify(next));
-      else localStorage.removeItem(GEO_TARGET_STORAGE_KEY);
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  const registerCurrentLocationAsTarget = useCallback(
-    (radiusMeters: number = DEFAULT_RADIUS_METERS) => {
-      if (!currentPosition) return;
-      persistTarget({
-        lat: currentPosition.lat,
-        lng: currentPosition.lng,
-        radiusMeters,
-        registeredAt: Date.now(),
-      });
-    },
-    [currentPosition, persistTarget],
-  );
-
-  const setTargetRadius = useCallback(
-    (radiusMeters: number) => {
-      if (!target) return;
-      persistTarget({ ...target, radiusMeters });
-    },
-    [target, persistTarget],
-  );
-
-  const clearTarget = useCallback(() => persistTarget(null), [persistTarget]);
-
-  const distanceToTarget =
-    currentPosition && target ? distanceMeters(currentPosition, target) : null;
-  const hasArrived = distanceToTarget != null && distanceToTarget <= (target?.radiusMeters ?? 0);
-
   const value: LocationContextValue = {
     permission,
     watching,
     startWatching,
     currentPosition,
-    target,
-    registerCurrentLocationAsTarget,
-    setTargetRadius,
-    clearTarget,
-    distanceToTarget,
-    hasArrived,
   };
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
