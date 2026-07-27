@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ThemeRegistry from "@/theme/ThemeRegistry";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import StoragePersistence from "@/components/StoragePersistence";
 import { themeColor } from "@/theme/theme";
 import "./globals.css";
 
@@ -41,6 +42,7 @@ export default function RootLayout({
     <html lang="ja" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <ServiceWorkerRegistration />
+        <StoragePersistence />
         <ThemeRegistry>{children}</ThemeRegistry>
       </body>
     </html>

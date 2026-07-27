@@ -115,20 +115,34 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   // deviceId のみ安定化のために保存する。
   useEffect(() => {
     let saved: Partial<MqttSettings> | null = null;
+    // 読み取りに失敗したかどうか。「保存が無い(初回起動)」と区別する必要がある
+    let readFailed = false;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) saved = JSON.parse(raw);
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed !== null && typeof parsed === "object") {
+          saved = parsed as Partial<MqttSettings>;
+        } else {
+          readFailed = true;
+        }
+      }
     } catch {
       saved = null;
+      readFailed = true;
     }
     const merged = resolveInitialSettings(saved, envSettings());
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ ...(saved ?? {}), deviceId: merged.deviceId }),
-      );
-    } catch {
-      // ignore storage errors
+    // 読めなかった値を deviceId だけの内容で上書きすると、ブローカーURLや認証情報を
+    // こちらから消してしまう。読めたときにだけ書き戻す
+    if (!readFailed) {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ ...(saved ?? {}), deviceId: merged.deviceId }),
+        );
+      } catch {
+        // ignore storage errors
+      }
     }
     // localStorage/env からの初期復元（マウント時一度きり）
     // eslint-disable-next-line react-hooks/set-state-in-effect

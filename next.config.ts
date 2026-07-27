@@ -36,6 +36,22 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // HTML(ドキュメント)も毎回再検証させる。既定では s-maxage だけが付き、
+        // ブラウザ向けの max-age も ETag も無い状態になるため、古いHTMLが端末に
+        // 残って「デプロイしても更新されない」状態になり得る。それを解消しようと
+        // サイトデータを消去するとlocalStorage(MQTT設定・停止方法)まで消えるため、
+        // 更新が黙って届くことを設定の永続性の前提として扱う。
+        // ハッシュ付きの /_next/static/* は不変なので対象にしない(ページを増やす際は
+        // ここのsourceも追加すること)。
+        source: "/",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=0, must-revalidate",
+          },
+        ],
+      },
     ];
   },
 };

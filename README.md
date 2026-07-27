@@ -3,6 +3,9 @@
 Raspberry Pi 上で動く `eager-alarm-edge`（アラームスケジューラ）を MQTT でリモート制御する
 IoT アプリ。PWA化を見据えた Next.js (App Router) + Material UI (MUI) + TypeScript 構成です。
 
+未解決の不具合は [docs/known-issues.md](docs/known-issues.md)、未実装の改善案は
+[docs/backlog.md](docs/backlog.md) にまとめています。
+
 下部のボトムナビゲーションに3つのタブがあります（「停止」タブはさらにサブタブに分かれます）。
 
 - **設定** — MQTT設定 / 位置情報 / 歩行検知 の3つの設定画面へのメニュー

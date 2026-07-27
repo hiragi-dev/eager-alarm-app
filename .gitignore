@@ -50,3 +50,5 @@ next-env.d.ts
 
 # demo (pi/.env, pi/.env.local は上の `.env*` ルールで除外済み)
 /pi/venv
+
+.next.broken-cache-bak/
