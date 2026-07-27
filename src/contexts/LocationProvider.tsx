@@ -19,7 +19,18 @@ type LocationContextValue = {
   permission: LocationPermission;
   watching: boolean;
   startWatching: () => void;
+  /**
+   * 常に実際のGPS値。停止方法の地図選択など「本物の現在地」を必要とする画面はこちらだけを使う
+   * (simulatedPositionは合成しない。合成が必要な到達判定側で個別に組み合わせる)。
+   */
   currentPosition: CurrentPosition | null;
+  /** 開発時のみ有効。設定されている間、到達判定フロー側はこちらを実GPSより優先して使う */
+  simulatedPosition: CurrentPosition | null;
+  /**
+   * 開発時のみ有効。到達判定フロー(ArrivalStopBridge/StopAlarmControl)向けの疑似現在地を設定する。
+   * 本番ビルドでは常にno-op。nullを渡すと解除する。
+   */
+  setSimulatedPosition: (point: GeoPoint | null) => void;
 };
 
 const LocationContext = createContext<LocationContextValue | null>(null);
@@ -38,7 +49,8 @@ export default function LocationProvider({ children }: { children: React.ReactNo
   const notify = useNotify();
   const [permission, setPermission] = useState<LocationPermission>("prompt");
   const [watching, setWatching] = useState(false);
-  const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
+  const [realPosition, setRealPosition] = useState<CurrentPosition | null>(null);
+  const [simulatedPosition, setSimulatedPositionState] = useState<CurrentPosition | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
   // 初回マウント時に対応状況を判定
@@ -61,7 +73,7 @@ export default function LocationProvider({ children }: { children: React.ReactNo
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
-        setCurrentPosition({
+        setRealPosition({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
@@ -79,11 +91,18 @@ export default function LocationProvider({ children }: { children: React.ReactNo
     watchIdRef.current = id;
   }, [notify]);
 
+  const setSimulatedPosition = useCallback((point: GeoPoint | null) => {
+    if (process.env.NODE_ENV === "production") return;
+    setSimulatedPositionState(point ? { ...point, accuracy: 5 } : null);
+  }, []);
+
   const value: LocationContextValue = {
     permission,
     watching,
     startWatching,
-    currentPosition,
+    currentPosition: realPosition,
+    simulatedPosition,
+    setSimulatedPosition,
   };
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;

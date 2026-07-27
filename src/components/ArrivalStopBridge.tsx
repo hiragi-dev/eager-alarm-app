@@ -34,10 +34,14 @@ type StoppingState = { alarmId: string; attempts: number; phase: StoppingPhase }
  * どのタブを表示していても動作するよう、page.tsxの最上位で常時マウントしておく。
  */
 export default function ArrivalStopBridge() {
-  const { currentPosition, permission, startWatching } = useLocation();
+  const { currentPosition, simulatedPosition, setSimulatedPosition, permission, startWatching } =
+    useLocation();
   const { status, alarms, ringingStatus, sendStopCommand } = useMqtt();
   const { stopMethods } = useStopMethods();
   const [stopping, setStopping] = useState<StoppingState | null>(null);
+
+  // 開発時のみ: 疑似現在地が設定されていればそちらを優先する(本物のGPSと区別しない)
+  const effectivePosition = simulatedPosition ?? currentPosition;
 
   const ringingIds = ringingStatus?.ringing_ids ?? [];
   const ringingIdsKey = ringingIds.join(",");
@@ -53,7 +57,7 @@ export default function ArrivalStopBridge() {
   // 到達判定: 停止処理が進行中でなければ、鳴動中の各アラームについて
   // 割り当てられた停止方法の地点との距離を確認し、範囲内なら停止処理を開始する
   useEffect(() => {
-    if (status !== "connected" || ringingIds.length === 0 || !currentPosition || stopping) return;
+    if (status !== "connected" || ringingIds.length === 0 || !effectivePosition || stopping) return;
 
     for (const alarmId of ringingIds) {
       const alarm = alarms.find((a) => a.id === alarmId);
@@ -62,7 +66,7 @@ export default function ArrivalStopBridge() {
         : undefined;
       if (!method) continue;
 
-      const distance = distanceMeters(currentPosition, method);
+      const distance = distanceMeters(effectivePosition, method);
       if (distance <= method.radiusMeters) {
         // 到達検知に同期して停止処理を開始する
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -71,7 +75,7 @@ export default function ArrivalStopBridge() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, ringingIdsKey, currentPosition, alarms, stopMethods, stopping]);
+  }, [status, ringingIdsKey, effectivePosition, alarms, stopMethods, stopping]);
 
   // sending: stopコマンドを送信する。QoS2配信が確認できたら waiting-confirmation へ
   useEffect(() => {
@@ -110,7 +114,9 @@ export default function ArrivalStopBridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopping?.alarmId, stopping?.phase, stopping?.attempts]);
 
-  // waiting-confirmation: ringing_statusから当該アラームが消えたら確認完了とする
+  // waiting-confirmation: ringing_statusから当該アラームが消えたら確認完了とする。
+  // 疑似現在地を使っていた場合はここで自動的に解除し、他の画面(停止方法の地図選択など)に
+  // 影響を残さないようにする。
   useEffect(() => {
     if (!stopping || stopping.phase !== "waiting-confirmation") return;
     if (!ringingIds.includes(stopping.alarmId)) {
@@ -122,6 +128,7 @@ export default function ArrivalStopBridge() {
           ? { ...prev, phase: "confirmed" }
           : prev,
       );
+      setSimulatedPosition(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopping?.alarmId, stopping?.phase, ringingIdsKey]);

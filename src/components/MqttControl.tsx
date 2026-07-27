@@ -5,6 +5,7 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -127,6 +128,11 @@ export default function MqttControl() {
               <Button
                 variant="contained"
                 onClick={connect}
+                startIcon={
+                  status === "connecting" ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : undefined
+                }
                 disabled={
                   status === "connecting" ||
                   connected ||
@@ -134,7 +140,7 @@ export default function MqttControl() {
                   !settings.brokerUrl
                 }
               >
-                接続
+                {status === "connecting" ? "接続中…" : "接続"}
               </Button>
               <Button
                 variant="outlined"

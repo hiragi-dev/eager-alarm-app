@@ -102,11 +102,26 @@ export default function StopMethodSettings() {
       </Box>
 
       {stopMethods.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          まだ停止方法が登録されていません。「追加」から地図で地点を選んで登録してください。
-        </Typography>
+        <Stack spacing={1} sx={{ alignItems: "center", py: 5 }}>
+          <PlaceIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+          <Typography variant="body2" color="text.secondary">
+            まだ停止方法が登録されていません
+          </Typography>
+          <Typography variant="caption" color="text.disabled">
+            「追加」から地図で地点を選んで登録できます
+          </Typography>
+        </Stack>
       ) : (
-        <List disablePadding>
+        <List
+          disablePadding
+          sx={{
+            bgcolor: "rgba(255, 255, 255, 0.04)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: 3,
+            px: 2,
+            py: 0.5,
+          }}
+        >
           {stopMethods.map((method, index) => {
             const inUse = usedStopMethodIds.has(method.id);
             return (

@@ -18,13 +18,16 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
+import AlarmOffIcon from "@mui/icons-material/AlarmOff";
 import CloudOffIcon from "@mui/icons-material/CloudOff";
 import DeleteIcon from "@mui/icons-material/Delete";
 import Alert from "@mui/material/Alert";
@@ -50,12 +53,16 @@ function defaultTimeValue(): string {
 
 type DialogMode = { kind: "add" } | { kind: "edit"; alarm: Alarm };
 
+/** edge応答待ちの操作種別。ポップアップの文言出し分けに使う */
+type SavingOp = "add" | "edit" | "delete";
+
 export default function AlarmControl() {
-  const { alarms, alarmsUpdatedAt, addAlarm, editAlarm, deleteAlarm } = useMqtt();
-  const { alarmManagement } = useAppReadiness();
+  const { alarms, alarmsUpdatedAt, ringingStatus, addAlarm, editAlarm, deleteAlarm } = useMqtt();
+  const { alarmManagement, broker } = useAppReadiness();
   const { stopMethods } = useStopMethods();
   const notify = useNotify();
   const ready = alarmManagement.kind === "ready";
+  const ringingIds = ringingStatus?.ringing_ids ?? [];
 
   // Dialog state
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
@@ -63,16 +70,21 @@ export default function AlarmControl() {
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>(["Mon", "Tue", "Wed", "Thu", "Fri"]);
   const [selectedStopMethodId, setSelectedStopMethodId] = useState("");
 
-  // Saving indicator
-  const [saving, setSaving] = useState(false);
+  // edge応答(list返信)待ちの操作。追加/編集/削除いずれもポップアップでブロックする
+  const [savingOp, setSavingOp] = useState<SavingOp | null>(null);
+  const saving = savingOp !== null;
   const saveRequestedAtRef = useRef<number | null>(null);
+
+  // 有効/無効トグルのedge応答待ち(アラームID → リクエスト時刻)。
+  // トグルはダイアログを介さないため、対象行のスイッチをスピナーに置き換えて応答待ちを伝える
+  const [pendingToggles, setPendingToggles] = useState<Record<string, number>>({});
 
   // Close dialog when alarms list is updated after a save
   useEffect(() => {
     if (!saving) return;
     if (alarmsUpdatedAt != null && saveRequestedAtRef.current != null) {
       if (alarmsUpdatedAt >= saveRequestedAtRef.current) {
-        setSaving(false);
+        setSavingOp(null);
         setDialogMode(null);
       }
     }
@@ -82,12 +94,33 @@ export default function AlarmControl() {
   useEffect(() => {
     if (!saving) return;
     const timer = setTimeout(() => {
-      setSaving(false);
+      setSavingOp(null);
       notify("error", "操作に時間がかかっています。反映されているか確認してください。");
       setDialogMode(null);
     }, ADD_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [saving, notify]);
+
+  // トグルのedge応答(list返信)を確認できたら、該当アラームのスピナーを解除する
+  useEffect(() => {
+    if (alarmsUpdatedAt == null) return;
+    // list受信(=MqttProviderの状態変化)に同期した解除
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPendingToggles((prev) => {
+      const entries = Object.entries(prev).filter(([, requestedAt]) => requestedAt > alarmsUpdatedAt);
+      return entries.length === Object.keys(prev).length ? prev : Object.fromEntries(entries);
+    });
+  }, [alarmsUpdatedAt]);
+
+  // トグルの応答が一定時間確認できなければ、スピナーを解除して通知する
+  useEffect(() => {
+    if (Object.keys(pendingToggles).length === 0) return;
+    const timer = setTimeout(() => {
+      setPendingToggles({});
+      notify("error", "切り替えの反映を確認できませんでした。一覧を確認してください。");
+    }, ADD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [pendingToggles, notify]);
 
   const openAddDialog = () => {
     setTimeInput(defaultTimeValue());
@@ -105,12 +138,15 @@ export default function AlarmControl() {
 
   const handleSave = () => {
     if (!timeInput || !selectedStopMethodId) return;
+    // 削除と同じく、鳴動中のアラームは内容を書き換えさせない
+    if (dialogMode?.kind === "edit" && ringingIds.includes(dialogMode.alarm.id)) return;
     saveRequestedAtRef.current = Date.now();
-    setSaving(true);
 
     if (dialogMode?.kind === "add") {
+      setSavingOp("add");
       addAlarm(timeInput, selectedDays, true, selectedStopMethodId);
     } else if (dialogMode?.kind === "edit") {
+      setSavingOp("edit");
       editAlarm(
         dialogMode.alarm.id,
         timeInput,
@@ -123,24 +159,38 @@ export default function AlarmControl() {
 
   const handleDelete = () => {
     if (dialogMode?.kind !== "edit") return;
+    // 鳴動中のアラームを消すと停止操作の対象を見失うため、削除は停止後に限定する
+    if (ringingIds.includes(dialogMode.alarm.id)) return;
+    // 追加/編集と同じく、edgeのlist返信で削除の反映を確認できるまでダイアログを保持する
+    saveRequestedAtRef.current = Date.now();
+    setSavingOp("delete");
     deleteAlarm(dialogMode.alarm.id);
-    setDialogMode(null);
   };
 
   const handleToggle = (alarm: Alarm) => {
     if (!alarm.stop_method_id) return;
+    setPendingToggles((prev) => ({ ...prev, [alarm.id]: Date.now() }));
     editAlarm(alarm.id, alarm.time, alarm.days_of_week as DayOfWeek[], !alarm.is_enabled, alarm.stop_method_id);
   };
 
   const isOpen = dialogMode !== null;
   const isEdit = dialogMode?.kind === "edit";
+  // 編集中のアラームが鳴動中なら削除も内容変更もさせない(ダイアログを開いたまま鳴り始めた場合も含む)
+  const isEditingRingingAlarm = dialogMode?.kind === "edit" && ringingIds.includes(dialogMode.alarm.id);
+  // 入力欄は保存中(edge応答待ち)と鳴動中のどちらでも操作不可にする
+  const inputsDisabled = saving || isEditingRingingAlarm;
 
   return (
     <Box sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
       <Backdrop open={saving} sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}>
         <Stack spacing={2} sx={{ alignItems: "center", color: "#fff" }}>
           <CircularProgress color="inherit" />
-          <Typography>保存中…</Typography>
+          <Typography sx={{ fontWeight: 700 }}>
+            {savingOp === "delete" ? "削除しています…" : "保存しています…"}
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+            エッジデバイスへの反映を確認しています
+          </Typography>
         </Stack>
       </Backdrop>
 
@@ -158,10 +208,36 @@ export default function AlarmControl() {
 
       {/* Alarm List */}
       <Box sx={{ flex: 1, overflowY: "auto", px: 2 }}>
-        {alarms.length === 0 ? (
-          <Typography variant="body1" color="text.secondary" sx={{ mt: 4, textAlign: "center" }}>
-            {alarmsUpdatedAt ? "アラームがありません" : "データを取得しています..."}
-          </Typography>
+        {alarmsUpdatedAt == null ? (
+          /* 初回取得中: 一覧の形を模したスケルトンで「読み込み中」であることを伝える */
+          <Box sx={{ pt: 1 }}>
+            {[0, 1, 2].map((i) => (
+              <Box key={i} sx={{ py: 1.5, opacity: 1 - i * 0.25 }}>
+                <Skeleton variant="text" sx={{ fontSize: "3.2rem", width: 168 }} />
+                <Skeleton variant="text" sx={{ fontSize: "0.875rem", width: 220 }} />
+              </Box>
+            ))}
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: "center", justifyContent: "center", mt: 3 }}
+            >
+              <CircularProgress size={14} thickness={5} />
+              <Typography variant="caption" color="text.secondary">
+                エッジデバイスからアラームを取得しています…
+              </Typography>
+            </Stack>
+          </Box>
+        ) : alarms.length === 0 ? (
+          <Stack spacing={1} sx={{ alignItems: "center", mt: 8 }}>
+            <AlarmOffIcon sx={{ fontSize: 44, color: "text.disabled" }} />
+            <Typography variant="body1" color="text.secondary">
+              アラームはまだありません
+            </Typography>
+            <Typography variant="caption" color="text.disabled">
+              右上の＋から追加できます
+            </Typography>
+          </Stack>
         ) : (
           <List disablePadding>
             {alarms.map((alarm, index) => {
@@ -191,15 +267,39 @@ export default function AlarmControl() {
                       </Typography>
                     }
                   />
-                  <Switch
-                    checked={alarm.is_enabled}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      handleToggle(alarm);
+                  {/* トグルのedge応答待ちの間はスイッチをスピナーに置き換え、
+                      操作が処理中であることを行単位で伝える(サイズを固定して行のガタつきを防ぐ) */}
+                  <Box
+                    sx={{
+                      width: 58,
+                      height: 38,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    disabled={!ready}
-                  />
+                  >
+                    {pendingToggles[alarm.id] != null ? (
+                      <CircularProgress size={22} />
+                    ) : (
+                      <Tooltip
+                        title="停止方法が未設定のため切り替えできません"
+                        disableHoverListener={!!alarm.stop_method_id}
+                      >
+                        <span>
+                          <Switch
+                            checked={alarm.is_enabled}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleToggle(alarm);
+                            }}
+                            disabled={!ready || !alarm.stop_method_id}
+                          />
+                        </span>
+                      </Tooltip>
+                    )}
+                  </Box>
                 </ListItem>
                 {index < alarms.length - 1 && (
                   <Divider sx={{ borderColor: "rgba(255, 255, 255, 0.12)" }} />
@@ -233,12 +333,18 @@ export default function AlarmControl() {
           {isEdit ? "アラームを編集" : "アラームを追加"}
         </DialogTitle>
         <DialogContent sx={{ pt: "8px !important" }}>
+          {isEditingRingingAlarm && (
+            <Alert severity="info" sx={{ mt: 1, borderRadius: 2 }}>
+              このアラームは鳴動中のため変更・削除できません。停止してから操作してください。
+            </Alert>
+          )}
+
           {/* Time Picker */}
           <TextField
             type="time"
             value={timeInput}
             onChange={(e) => setTimeInput(e.target.value)}
-            disabled={saving}
+            disabled={inputsDisabled}
             fullWidth
             variant="standard"
             slotProps={{ input: { disableUnderline: true } }}
@@ -257,7 +363,7 @@ export default function AlarmControl() {
           />
 
           {/* Weekday Selector */}
-          <FormControl component="fieldset" fullWidth disabled={saving}>
+          <FormControl component="fieldset" fullWidth disabled={inputsDisabled}>
             <FormLabel
               component="legend"
               sx={{
@@ -273,7 +379,7 @@ export default function AlarmControl() {
             <ToggleButtonGroup
               value={selectedDays}
               onChange={(_event, next: DayOfWeek[]) => setSelectedDays(next)}
-              disabled={saving}
+              disabled={inputsDisabled}
               sx={{
                 display: "flex",
                 width: "100%",
@@ -317,7 +423,7 @@ export default function AlarmControl() {
           </FormControl>
 
           {/* Stop Method Selector */}
-          <FormControl component="fieldset" fullWidth disabled={saving} sx={{ mt: 3 }}>
+          <FormControl component="fieldset" fullWidth disabled={inputsDisabled} sx={{ mt: 3 }}>
             <FormLabel
               component="legend"
               sx={{
@@ -369,23 +475,30 @@ export default function AlarmControl() {
               onClick={handleSave}
               variant="contained"
               fullWidth
-              disabled={saving || !timeInput || !selectedStopMethodId}
+              disabled={inputsDisabled || !timeInput || !selectedStopMethodId}
               sx={{ borderRadius: 2, py: 1.5 }}
             >
               保存
             </Button>
           </Stack>
           {isEdit && (
-            <Button
-              onClick={handleDelete}
-              startIcon={<DeleteIcon />}
-              color="error"
-              fullWidth
-              disabled={saving}
-              sx={{ borderRadius: 2, py: 1.2 }}
+            <Tooltip
+              title="鳴動中のアラームは変更・削除できません。先に停止してください。"
+              disableHoverListener={!isEditingRingingAlarm}
             >
-              アラームを削除
-            </Button>
+              <Box sx={{ width: "100%" }}>
+                <Button
+                  onClick={handleDelete}
+                  startIcon={<DeleteIcon />}
+                  color="error"
+                  fullWidth
+                  disabled={saving || isEditingRingingAlarm}
+                  sx={{ borderRadius: 2, py: 1.2 }}
+                >
+                  アラームを削除
+                </Button>
+              </Box>
+            </Tooltip>
           )}
         </DialogActions>
       </Dialog>
@@ -421,33 +534,60 @@ export default function AlarmControl() {
               px: 2,
             }}
           >
-            <Box
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                p: 2,
-                mb: 2,
-                borderRadius: "50%",
-                bgcolor: "rgba(244, 67, 54, 0.1)",
-                color: "error.main",
-              }}
-            >
-              <CloudOffIcon sx={{ fontSize: 40 }} />
-            </Box>
-            <Typography variant="h6" color="error" gutterBottom sx={{ fontWeight: "bold" }}>
-              未接続・エラー
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              アラームを操作するには、デバイスとの接続が必要です。以下の問題を確認してください。
-            </Typography>
-            <Stack spacing={1.5} sx={{ textAlign: "left" }}>
-              {alarmManagement.reasons.map((reason, i) => (
-                <Alert severity="error" key={i} sx={{ borderRadius: 2 }}>
-                  {blockReasonLabel(reason)}
-                </Alert>
-              ))}
-            </Stack>
+            {broker.kind === "connecting" ? (
+              <>
+                <Box
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    p: 2,
+                    mb: 2,
+                    borderRadius: "50%",
+                    bgcolor: "rgba(255, 255, 255, 0.06)",
+                    color: "text.primary",
+                  }}
+                >
+                  <CircularProgress size={40} />
+                </Box>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: "bold" }}>
+                  再接続しています…
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  デバイスへ自動で接続を試みています。しばらくお待ちください。
+                </Typography>
+              </>
+            ) : (
+              <>
+                <Box
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    p: 2,
+                    mb: 2,
+                    borderRadius: "50%",
+                    bgcolor: "rgba(244, 67, 54, 0.1)",
+                    color: "error.main",
+                  }}
+                >
+                  <CloudOffIcon sx={{ fontSize: 40 }} />
+                </Box>
+                <Typography variant="h6" color="error" gutterBottom sx={{ fontWeight: "bold" }}>
+                  未接続・エラー
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  アラームを操作するには、デバイスとの接続が必要です。以下の問題を確認してください。
+                </Typography>
+                <Stack spacing={1.5} sx={{ textAlign: "left" }}>
+                  {alarmManagement.reasons.map((reason, i) => (
+                    <Alert severity="error" key={i} sx={{ borderRadius: 2 }}>
+                      {blockReasonLabel(reason)}
+                    </Alert>
+                  ))}
+                </Stack>
+              </>
+            )}
           </Box>
         </Box>
       )}

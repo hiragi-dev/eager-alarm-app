@@ -9,17 +9,23 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "mock:edge": "node --env-file=.env.local mock/edge-mock.mjs"
+    "mock:edge": "node --env-file=.env.local mock/edge-mock.mjs",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@auth/core": "^0.41.2",
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
     "@emotion/server": "^11.11.0",
     "@emotion/styled": "^11.14.1",
+    "@hono/auth-js": "^1.1.1",
     "@mui/icons-material": "^9.2.0",
     "@mui/material": "^9.2.0",
     "@mui/material-nextjs": "^9.1.1",
+    "@opennextjs/cloudflare": "^1.20.1",
     "@types/leaflet": "^1.9.21",
+    "hono": "^4.12.30",
     "leaflet": "^1.9.4",
     "mqtt": "^5.15.2",
     "next": "16.2.10",
@@ -33,6 +39,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.110.0"
   }
 }
