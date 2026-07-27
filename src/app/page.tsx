@@ -2,11 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
-import List from "@mui/material/List";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemText from "@mui/material/ListItemText";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import BottomNavigation from "@mui/material/BottomNavigation";
@@ -16,12 +12,10 @@ import AlarmIcon from "@mui/icons-material/Alarm";
 import SettingsIcon from "@mui/icons-material/Settings";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import ArrivalStopBridge from "@/components/ArrivalStopBridge";
-import LocationSettings from "@/components/LocationSettings";
 import MqttControl from "@/components/MqttControl";
 import StopAlarmControl from "@/components/StopAlarmControl";
 import StopMethodSettings from "@/components/StopMethodSettings";
 import WalkPauseBridge from "@/components/WalkPauseBridge";
-import WalkSensorSettings from "@/components/WalkSensorSettings";
 import WalkSensorProvider from "@/contexts/WalkSensorProvider";
 import LocationProvider from "@/contexts/LocationProvider";
 import MqttProvider from "@/contexts/MqttProvider";
@@ -30,7 +24,6 @@ import StopMethodProvider from "@/contexts/StopMethodProvider";
 import RingingAlert from "@/components/RingingAlert";
 
 type TabKey = "settings" | "alarms" | "stop";
-type SettingsViewKey = "menu" | "mqtt" | "location" | "walkSensor";
 type StopViewKey = "control" | "methods";
 
 /**
@@ -49,7 +42,6 @@ const tabPanelSx = {
 
 export default function Home() {
   const [tab, setTab] = useState<TabKey>("alarms");
-  const [settingsView, setSettingsView] = useState<SettingsViewKey>("menu");
   const [stopView, setStopView] = useState<StopViewKey>("control");
 
   const navigationItems: Array<{ key: TabKey; label: string; icon: ReactNode }> = [
@@ -85,83 +77,8 @@ export default function Home() {
                 <Container maxWidth="sm" sx={{ pt: 3, pb: 2, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                   <Box role="tabpanel" hidden={tab !== "settings"} sx={tabPanelSx}>
                     {tab === "settings" && (
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 2, height: "100%" }}>
-                        <Box
-                          sx={{
-                            position: "relative",
-                            flex: 1,
-                            minHeight: 0,
-                            overflow: "hidden",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              inset: 0,
-                              overflowY: "auto",
-                              px: 0.25,
-                              pb: 2,
-                              transform: settingsView === "menu" ? "translateX(0%)" : "translateX(-100%)",
-                              transition: "transform 180ms ease",
-                              pointerEvents: settingsView === "menu" ? "auto" : "none",
-                            }}
-                          >
-                            <List
-                              sx={{
-                                bgcolor: "rgba(255,255,255,0.04)",
-                                borderRadius: 3,
-                                border: "1px solid rgba(217, 255, 77, 0.12)",
-                              }}
-                            >
-                              <ListItemButton onClick={() => setSettingsView("mqtt")}>
-                                <ListItemText primary="MQTT設定" secondary="接続先サーバーを設定" />
-                                <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
-                                  ›
-                                </Box>
-                              </ListItemButton>
-                              <ListItemButton onClick={() => setSettingsView("location")}>
-                                <ListItemText primary="位置情報" secondary="位置情報の許可と設定" />
-                                <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
-                                  ›
-                                </Box>
-                              </ListItemButton>
-                              <ListItemButton onClick={() => setSettingsView("walkSensor")}>
-                                <ListItemText primary="歩行検知" secondary="歩行検知の許可と確認" />
-                                <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: "1.1rem" }}>
-                                  ›
-                                </Box>
-                              </ListItemButton>
-                            </List>
-                          </Box>
-
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              inset: 0,
-                              overflowY: "auto",
-                              px: 0.25,
-                              pb: 2,
-                              transform: settingsView === "menu" ? "translateX(100%)" : "translateX(0%)",
-                              transition: "transform 180ms ease",
-                              pointerEvents: settingsView === "menu" ? "none" : "auto",
-                            }}
-                          >
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                              <Button
-                                variant="text"
-                                color="primary"
-                                onClick={() => setSettingsView("menu")}
-                                sx={{ alignSelf: "flex-start", px: 0, mb: 0.5 }}
-                              >
-                                ← 設定一覧へ戻る
-                              </Button>
-
-                              {settingsView === "mqtt" && <MqttControl />}
-                              {settingsView === "location" && <LocationSettings />}
-                              {settingsView === "walkSensor" && <WalkSensorSettings />}
-                            </Box>
-                          </Box>
-                        </Box>
+                      <Box sx={{ height: "100%", overflowY: "auto", px: 0.25, pb: 2 }}>
+                        <MqttControl />
                       </Box>
                     )}
                   </Box>
