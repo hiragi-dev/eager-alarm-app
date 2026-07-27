@@ -16,6 +16,7 @@ import MqttControl from "@/components/MqttControl";
 import StopAlarmControl from "@/components/StopAlarmControl";
 import StopMethodSettings from "@/components/StopMethodSettings";
 import WalkPauseBridge from "@/components/WalkPauseBridge";
+import WalkSensorPermissionBridge from "@/components/WalkSensorPermissionBridge";
 import WalkSensorProvider from "@/contexts/WalkSensorProvider";
 import LocationProvider from "@/contexts/LocationProvider";
 import MqttProvider from "@/contexts/MqttProvider";
@@ -62,6 +63,7 @@ export default function Home() {
           <LocationProvider>
             <StopMethodProvider>
               <WalkPauseBridge />
+              <WalkSensorPermissionBridge />
               <ArrivalStopBridge />
               <RingingAlert onGoToStop={handleGoToStop} />
               <Box
