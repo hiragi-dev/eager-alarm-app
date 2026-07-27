@@ -13,6 +13,8 @@ type NewStopMethodInput = {
 type StopMethodContextValue = {
   stopMethods: StopMethod[];
   addStopMethod: (input: NewStopMethodInput) => StopMethod;
+  /** 既存の停止方法の名前・地点・半径を差し替える。idとcreatedAtは維持する */
+  updateStopMethod: (id: string, input: NewStopMethodInput) => void;
   deleteStopMethod: (id: string) => void;
 };
 
@@ -70,6 +72,27 @@ export default function StopMethodProvider({ children }: { children: React.React
     [stopMethods, persist],
   );
 
+  // アラーム側は stop_method_id で参照しているだけなので、idを保ったまま
+  // 中身を差し替えれば割り当ては維持される
+  const updateStopMethod = useCallback(
+    (id: string, input: NewStopMethodInput) => {
+      persist(
+        stopMethods.map((m) =>
+          m.id === id
+            ? {
+                ...m,
+                label: input.label,
+                lat: input.lat,
+                lng: input.lng,
+                radiusMeters: input.radiusMeters,
+              }
+            : m,
+        ),
+      );
+    },
+    [stopMethods, persist],
+  );
+
   const deleteStopMethod = useCallback(
     (id: string) => {
       persist(stopMethods.filter((m) => m.id !== id));
@@ -77,7 +100,12 @@ export default function StopMethodProvider({ children }: { children: React.React
     [stopMethods, persist],
   );
 
-  const value: StopMethodContextValue = { stopMethods, addStopMethod, deleteStopMethod };
+  const value: StopMethodContextValue = {
+    stopMethods,
+    addStopMethod,
+    updateStopMethod,
+    deleteStopMethod,
+  };
 
   return <StopMethodContext.Provider value={value}>{children}</StopMethodContext.Provider>;
 }

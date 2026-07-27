@@ -61,12 +61,18 @@ type Props = {
   onRadiusChange?: (radiusMeters: number) => void;
   minRadiusMeters?: number;
   maxRadiusMeters?: number;
+  /**
+   * 閲覧専用。タップしても地点を選択せず、半径スライダーも表示しない。
+   * 登録済みの停止方法がどこなのかを確認するだけの用途で使う
+   */
+  readOnly?: boolean;
 };
 
 /**
  * タップ/クリックした地点にマーカーを立てて位置を選択させる地図。OpenStreetMapタイルを使用。
  * 到達判定半径(radiusMeters)を指定すると選択地点に円を描画し、onRadiusChangeを渡すと
- * 地図下部に半径調整スライダーを表示する。
+ * 地図下部に半径調整スライダーを表示する。readOnly を指定すると選択・半径調整を行わない
+ * 閲覧専用の地図になる(登録済みの地点を確認するだけの用途)。
  * Leafletはwindow/documentに依存しSSR非対応なため、呼び出し側で
  * next/dynamic(..., { ssr: false }) 経由で読み込むこと。
  */
@@ -81,6 +87,7 @@ export default function LocationPickerMap({
   onRadiusChange,
   minRadiusMeters = 5,
   maxRadiusMeters = 200,
+  readOnly = false,
 }: Props) {
   const mapRef = useRef<L.Map | null>(null);
 
@@ -99,7 +106,7 @@ export default function LocationPickerMap({
     mapRef.current?.flyTo([currentPosition.lat, currentPosition.lng], 17);
   };
 
-  const showRadiusSlider = !!onRadiusChange && !!value;
+  const showRadiusSlider = !!onRadiusChange && !!value && !readOnly;
 
   return (
     <Box sx={{ position: "relative", height, width: "100%" }}>
@@ -115,7 +122,7 @@ export default function LocationPickerMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
-        <ClickHandler onSelect={onSelect} />
+        {!readOnly && <ClickHandler onSelect={onSelect} />}
         {currentPosition && (
           <Marker
             position={[currentPosition.lat, currentPosition.lng]}
@@ -135,7 +142,7 @@ export default function LocationPickerMap({
       </MapContainer>
 
       {currentPosition && (
-        <Tooltip title="現在地を使う">
+        <Tooltip title={readOnly ? "現在地へ移動" : "現在地を使う"}>
           <IconButton
             onClick={handleGoToCurrentLocation}
             sx={{
