@@ -33,6 +33,20 @@ type TabKey = "settings" | "alarms" | "stop";
 type SettingsViewKey = "menu" | "mqtt" | "location" | "walkSensor";
 type StopViewKey = "control" | "methods";
 
+/**
+ * タブパネル共通のスタイル。
+ *
+ * hidden属性による display:none はブラウザ標準のスタイルなので、sxでdisplayを
+ * 指定すると(作成者スタイルが優先されるため)打ち消されてしまう。非表示のはずの
+ * パネルが height:100% の flex アイテムとして残ると、表示中のパネルと場所を
+ * 分け合って両方が縮み、画面の半分しか使えなくなる。
+ * hidden時は必ず消えるよう、属性セレクタで明示しておく。
+ */
+const tabPanelSx = {
+  height: "100%",
+  "&[hidden]": { display: "none" },
+} as const;
+
 export default function Home() {
   const [tab, setTab] = useState<TabKey>("alarms");
   const [settingsView, setSettingsView] = useState<SettingsViewKey>("menu");
@@ -69,7 +83,7 @@ export default function Home() {
                 }}
               >
                 <Container maxWidth="sm" sx={{ pt: 3, pb: 2, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                  <Box role="tabpanel" hidden={tab !== "settings"} sx={{ height: "100%" }}>
+                  <Box role="tabpanel" hidden={tab !== "settings"} sx={tabPanelSx}>
                     {tab === "settings" && (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 2, height: "100%" }}>
                         <Box
@@ -151,10 +165,14 @@ export default function Home() {
                       </Box>
                     )}
                   </Box>
-                  <Box role="tabpanel" hidden={tab !== "alarms"} sx={{ height: "100%" }}>
+                  <Box role="tabpanel" hidden={tab !== "alarms"} sx={tabPanelSx}>
                     {tab === "alarms" && <AlarmControl />}
                   </Box>
-                  <Box role="tabpanel" hidden={tab !== "stop"} sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                  <Box
+                    role="tabpanel"
+                    hidden={tab !== "stop"}
+                    sx={{ ...tabPanelSx, display: "flex", flexDirection: "column" }}
+                  >
                     {tab === "stop" && (
                       <>
                         <Tabs
