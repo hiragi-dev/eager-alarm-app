@@ -219,10 +219,10 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
       addLog(`← ${topic}: ${text}`);
       if (topic === aTopic) {
         try {
-            const rawAlarms = JSON.parse(text);
-            // Sort by time as per v2 spec
-            setAlarms(sortAlarmsByTime(rawAlarms as Alarm[]));
-            setAlarmsUpdatedAt(Date.now());
+          const rawAlarms = JSON.parse(text);
+          // Sort by time as per v2 spec
+          setAlarms(sortAlarmsByTime(rawAlarms as Alarm[]));
+          setAlarmsUpdatedAt(Date.now());
         } catch {
           addLog("アラーム一覧の解析に失敗しました");
         }
@@ -391,24 +391,10 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (status === "connected") {
       requestAlarms();
-      publishCommand(buildRingingStatusCommand());
+      // publishCommand(buildRingingStatusCommand());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
-
-  // ringing_status ポーリング
-  useEffect(() => {
-    if (status !== "connected") {
-      // ブローカー切断に同期してringing状態をリセットする
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRingingStatus(null);
-      return;
-    }
-    const pollId = setInterval(() => {
-      publishCommand(buildRingingStatusCommand());
-    }, RINGING_POLL_INTERVAL_MS);
-    return () => clearInterval(pollId);
-  }, [status, publishCommand]);
 
   // edgeデバイスの生存確認: ブローカーに接続している間、statusコマンドを定期送信し、
   // statusトピックへの応答がタイムアウト内に来なければオフライン扱いにする。

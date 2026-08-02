@@ -169,6 +169,9 @@ export default function AlarmControl() {
 
   const handleToggle = (alarm: Alarm) => {
     if (!alarm.stop_method_id) return;
+    // 鳴動中のアラームを無効化できると、停止方法(位置情報)に到達しなくても鳴り止ませられてしまい、
+    // このアプリの前提が崩れる。編集・削除と同じく、鳴動中は切り替えも受け付けない
+    if (ringingIds.includes(alarm.id)) return;
     setPendingToggles((prev) => ({ ...prev, [alarm.id]: Date.now() }));
     editAlarm(alarm.id, alarm.time, alarm.days_of_week as DayOfWeek[], !alarm.is_enabled, alarm.stop_method_id);
   };
@@ -244,6 +247,13 @@ export default function AlarmControl() {
               const stopMethod = alarm.stop_method_id
                 ? stopMethods.find((m) => m.id === alarm.stop_method_id)
                 : undefined;
+              // 切り替えを受け付けない理由(handleToggleのガードと対応)。
+              // 鳴動中であることを優先して伝える
+              const toggleBlockedReason = ringingIds.includes(alarm.id)
+                ? "鳴動中は無効にできません。設定した停止方法で止めてください"
+                : !alarm.stop_method_id
+                  ? "停止方法が未設定のため切り替えできません"
+                  : null;
               return (
               <Box key={alarm.id}>
                 <ListItem
@@ -284,8 +294,8 @@ export default function AlarmControl() {
                       <CircularProgress size={22} />
                     ) : (
                       <Tooltip
-                        title="停止方法が未設定のため切り替えできません"
-                        disableHoverListener={!!alarm.stop_method_id}
+                        title={toggleBlockedReason ?? ""}
+                        disableHoverListener={!toggleBlockedReason}
                       >
                         <span>
                           <Switch
@@ -294,7 +304,7 @@ export default function AlarmControl() {
                               e.stopPropagation();
                               handleToggle(alarm);
                             }}
-                            disabled={!ready || !alarm.stop_method_id}
+                            disabled={!ready || !!toggleBlockedReason}
                           />
                         </span>
                       </Tooltip>

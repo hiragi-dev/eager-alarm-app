@@ -13,6 +13,7 @@ import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import PlaceIcon from "@mui/icons-material/Place";
 import { useLocation } from "@/contexts/LocationProvider";
 import { useMqtt } from "@/contexts/MqttProvider";
+import { useNotify } from "@/contexts/NotificationProvider";
 import { useStopMethods } from "@/contexts/StopMethodProvider";
 import { useWalkSensorContext } from "@/contexts/WalkSensorProvider";
 import { useAppReadiness } from "@/hooks/useAppReadiness";
@@ -35,9 +36,10 @@ function fmtDistance(m: number | null): string {
 export default function StopAlarmControl() {
   const { isWalking } = useWalkSensorContext();
   const { currentPosition, simulatedPosition, setSimulatedPosition } = useLocation();
-  const { alarms, ringingStatus } = useMqtt();
+  const { alarms, ringingStatus, sendStopCommand } = useMqtt();
   const { stopMethods } = useStopMethods();
   const { alarmManagement } = useAppReadiness();
+  const notify = useNotify();
 
   // 開発時のみ: 疑似現在地が設定されていれば、表示上の距離もそちらに合わせる
   // (ArrivalStopBridgeの到達判定と表示を一致させ、テスト時に矛盾なく確認できるようにする)
@@ -53,6 +55,19 @@ export default function StopAlarmControl() {
     stopMethod && effectivePosition ? distanceMeters(effectivePosition, stopMethod) : null;
   const hasArrived =
     distanceToTarget != null && stopMethod != null && distanceToTarget <= stopMethod.radiusMeters;
+
+  // 開発用: 到達判定を待たずにstopコマンドを直接送る。
+  // ArrivalStopBridgeのような再送・確認は挟まないため、送信できたかだけを通知する
+  const handleForceStop = () => {
+    sendStopCommand().then((delivered) => {
+      notify(
+        delivered ? "info" : "error",
+        delivered
+          ? "停止コマンドを送信しました（開発用）"
+          : "停止コマンドを送信できませんでした。MQTTの接続状態を確認してください。",
+      );
+    });
+  };
 
   return (
     <Box sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
@@ -118,7 +133,7 @@ export default function StopAlarmControl() {
             疑似現在地はArrivalStopBridgeが停止確認でき次第自動的に解除する。
             本番ビルドではLocationProvider.setSimulatedPositionがno-opになるうえ、
             process.env.NODE_ENV判定でこのブロック自体もビルド時に除去される。 */}
-        {isDev && stopMethod && (
+        {isDev && isRinging && (
           <Card variant="outlined" sx={{ borderStyle: "dashed", borderColor: "warning.main" }}>
             <CardContent>
               <Typography
@@ -128,14 +143,23 @@ export default function StopAlarmControl() {
               >
                 開発用（本番ビルドには含まれません）
               </Typography>
-              <Button
-                variant="outlined"
-                color="warning"
-                disabled={!!simulatedPosition}
-                onClick={() => setSimulatedPosition({ lat: stopMethod.lat, lng: stopMethod.lng })}
-              >
-                この停止方法の位置まで移動したことにする
-              </Button>
+              <Stack spacing={1.5} sx={{ alignItems: "flex-start" }}>
+                {stopMethod && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    disabled={!!simulatedPosition}
+                    onClick={() => setSimulatedPosition({ lat: stopMethod.lat, lng: stopMethod.lng })}
+                  >
+                    この停止方法の位置まで移動したことにする
+                  </Button>
+                )}
+                {/* 停止方法の到達判定を経由せずに鳴動を止める強制停止。
+                    停止方法が未設定のアラームでも試せるよう、stopMethodの有無に関わらず出す */}
+                <Button variant="outlined" color="warning" onClick={handleForceStop}>
+                  強制停止（stopコマンドを直接送信）
+                </Button>
+              </Stack>
             </CardContent>
           </Card>
         )}
