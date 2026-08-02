@@ -14,24 +14,27 @@ export type Alarm = {
   days_of_week: DayOfWeek[];
   is_enabled: boolean;
   stop_method_id: string | null;
+  is_nfc_enabled: boolean;
 };
 
 export type AlarmCommand =
   | {
-      type: "add";
-      time: string;
-      days_of_week: DayOfWeek[];
-      is_enabled: boolean;
-      stop_method_id: string;
-    }
+    type: "add";
+    time: string;
+    days_of_week: DayOfWeek[];
+    is_enabled: boolean;
+    stop_method_id: string;
+    is_nfc_enabled: boolean;
+  }
   | {
-      type: "edit";
-      id: string;
-      time: string;
-      days_of_week: DayOfWeek[];
-      is_enabled: boolean;
-      stop_method_id: string;
-    }
+    type: "edit";
+    id: string;
+    time: string;
+    days_of_week: DayOfWeek[];
+    is_enabled: boolean;
+    stop_method_id: string;
+    is_nfc_enabled: boolean;
+  }
   | { type: "delete"; id: string }
   | { type: "list" }
   | { type: "pause"; duration_ms: number }
@@ -49,6 +52,7 @@ export function buildAddCommand(
   daysOfWeek: DayOfWeek[],
   isEnabled: boolean,
   stopMethodId: string,
+  isNfcEnabled: boolean,
 ): AlarmCommand {
   return {
     type: "add",
@@ -56,6 +60,7 @@ export function buildAddCommand(
     days_of_week: daysOfWeek,
     is_enabled: isEnabled,
     stop_method_id: stopMethodId,
+    is_nfc_enabled: isNfcEnabled,
   };
 }
 
@@ -65,6 +70,7 @@ export function buildEditCommand(
   daysOfWeek: DayOfWeek[],
   isEnabled: boolean,
   stopMethodId: string,
+  isNfcEnabled: boolean,
 ): AlarmCommand {
   return {
     type: "edit",
@@ -73,6 +79,7 @@ export function buildEditCommand(
     days_of_week: daysOfWeek,
     is_enabled: isEnabled,
     stop_method_id: stopMethodId,
+    is_nfc_enabled: isNfcEnabled
   };
 }
 
