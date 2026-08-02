@@ -37,6 +37,9 @@ import { useStopMethods } from "@/contexts/StopMethodProvider";
 import { useAppReadiness } from "@/hooks/useAppReadiness";
 import { blockReasonLabel } from "@/lib/appState";
 import { formatDaysOfWeek, type Alarm, type DayOfWeek } from "@/lib/alarm";
+import Checkbox from "@mui/material/Checkbox";
+import FormGroup from "@mui/material/FormGroup";
+import FormControlLabel from "@mui/material/FormControlLabel";
 
 const ADD_TIMEOUT_MS = 8000;
 const ALL_DAYS: DayOfWeek[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -69,6 +72,7 @@ export default function AlarmControl() {
   const [timeInput, setTimeInput] = useState(defaultTimeValue());
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>(["Mon", "Tue", "Wed", "Thu", "Fri"]);
   const [selectedStopMethodId, setSelectedStopMethodId] = useState("");
+  const [isNfcEnabled, setIsNfcEnabled] = useState(false);
 
   // edge応答(list返信)待ちの操作。追加/編集/削除いずれもポップアップでブロックする
   const [savingOp, setSavingOp] = useState<SavingOp | null>(null);
@@ -131,6 +135,7 @@ export default function AlarmControl() {
 
   const openEditDialog = (alarm: Alarm) => {
     setTimeInput(alarm.time);
+    setIsNfcEnabled(alarm.is_nfc_enabled);
     setSelectedDays(alarm.days_of_week as DayOfWeek[]);
     setSelectedStopMethodId(alarm.stop_method_id ?? "");
     setDialogMode({ kind: "edit", alarm });
@@ -144,7 +149,7 @@ export default function AlarmControl() {
 
     if (dialogMode?.kind === "add") {
       setSavingOp("add");
-      addAlarm(timeInput, selectedDays, true, selectedStopMethodId);
+      addAlarm(timeInput, selectedDays, true, selectedStopMethodId, isNfcEnabled);
     } else if (dialogMode?.kind === "edit") {
       setSavingOp("edit");
       editAlarm(
@@ -153,6 +158,7 @@ export default function AlarmControl() {
         selectedDays,
         dialogMode.alarm.is_enabled,
         selectedStopMethodId,
+        isNfcEnabled,
       );
     }
   };
@@ -173,7 +179,7 @@ export default function AlarmControl() {
     // このアプリの前提が崩れる。編集・削除と同じく、鳴動中は切り替えも受け付けない
     if (ringingIds.includes(alarm.id)) return;
     setPendingToggles((prev) => ({ ...prev, [alarm.id]: Date.now() }));
-    editAlarm(alarm.id, alarm.time, alarm.days_of_week as DayOfWeek[], !alarm.is_enabled, alarm.stop_method_id);
+    editAlarm(alarm.id, alarm.time, alarm.days_of_week as DayOfWeek[], !alarm.is_enabled, alarm.stop_method_id, isNfcEnabled);
   };
 
   const isOpen = dialogMode !== null;
@@ -255,66 +261,66 @@ export default function AlarmControl() {
                   ? "停止方法が未設定のため切り替えできません"
                   : null;
               return (
-              <Box key={alarm.id}>
-                <ListItem
-                  disableGutters
-                  sx={{ py: 1.5, cursor: "pointer", opacity: alarm.is_enabled ? 1 : 0.45 }}
-                  onClick={() => openEditDialog(alarm)}
-                >
-                  <ListItemText
-                    primary={
-                      <Typography
-                        variant="h2"
-                        sx={{ fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1.1 }}
-                      >
-                        {alarm.time}
-                      </Typography>
-                    }
-                    secondary={
-                      <Typography variant="body2" sx={{ color: alarm.is_enabled ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)", mt: 0.5 }}>
-                        {formatDaysOfWeek(alarm.days_of_week as DayOfWeek[])}
-                        {stopMethod ? ` ・ ${stopMethod.label}` : " ・ 停止方法未設定"}
-                      </Typography>
-                    }
-                  />
-                  {/* トグルのedge応答待ちの間はスイッチをスピナーに置き換え、
-                      操作が処理中であることを行単位で伝える(サイズを固定して行のガタつきを防ぐ) */}
-                  <Box
-                    sx={{
-                      width: 58,
-                      height: 38,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
+                <Box key={alarm.id}>
+                  <ListItem
+                    disableGutters
+                    sx={{ py: 1.5, cursor: "pointer", opacity: alarm.is_enabled ? 1 : 0.45 }}
+                    onClick={() => openEditDialog(alarm)}
                   >
-                    {pendingToggles[alarm.id] != null ? (
-                      <CircularProgress size={22} />
-                    ) : (
-                      <Tooltip
-                        title={toggleBlockedReason ?? ""}
-                        disableHoverListener={!toggleBlockedReason}
-                      >
-                        <span>
-                          <Switch
-                            checked={alarm.is_enabled}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleToggle(alarm);
-                            }}
-                            disabled={!ready || !!toggleBlockedReason}
-                          />
-                        </span>
-                      </Tooltip>
-                    )}
-                  </Box>
-                </ListItem>
-                {index < alarms.length - 1 && (
-                  <Divider sx={{ borderColor: "rgba(255, 255, 255, 0.12)" }} />
-                )}
-              </Box>
+                    <ListItemText
+                      primary={
+                        <Typography
+                          variant="h2"
+                          sx={{ fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1.1 }}
+                        >
+                          {alarm.time}
+                        </Typography>
+                      }
+                      secondary={
+                        <Typography variant="body2" sx={{ color: alarm.is_enabled ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)", mt: 0.5 }}>
+                          {formatDaysOfWeek(alarm.days_of_week as DayOfWeek[])}
+                          {stopMethod ? ` ・ ${stopMethod.label}` : " ・ 停止方法未設定"}
+                        </Typography>
+                      }
+                    />
+                    {/* トグルのedge応答待ちの間はスイッチをスピナーに置き換え、
+                      操作が処理中であることを行単位で伝える(サイズを固定して行のガタつきを防ぐ) */}
+                    <Box
+                      sx={{
+                        width: 58,
+                        height: 38,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {pendingToggles[alarm.id] != null ? (
+                        <CircularProgress size={22} />
+                      ) : (
+                        <Tooltip
+                          title={toggleBlockedReason ?? ""}
+                          disableHoverListener={!toggleBlockedReason}
+                        >
+                          <span>
+                            <Switch
+                              checked={alarm.is_enabled}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleToggle(alarm);
+                              }}
+                              disabled={!ready || !!toggleBlockedReason}
+                            />
+                          </span>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </ListItem>
+                  {index < alarms.length - 1 && (
+                    <Divider sx={{ borderColor: "rgba(255, 255, 255, 0.12)" }} />
+                  )}
+                </Box>
               );
             })}
           </List>
@@ -469,6 +475,11 @@ export default function AlarmControl() {
               </Select>
             )}
           </FormControl>
+        </DialogContent>
+        <DialogContent>
+          <FormGroup>
+            <FormControlLabel control={<Checkbox checked={isNfcEnabled} onChange={(_, c) => setIsNfcEnabled(c)} />} label="NFC認証による二段階停止を有効化する" />
+          </FormGroup>
         </DialogContent>
         <DialogActions sx={{ flexDirection: "column", p: 3, pt: 1, gap: 2 }}>
           <Stack direction="row" spacing={2} sx={{ width: "100%" }}>

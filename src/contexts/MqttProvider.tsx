@@ -67,13 +67,14 @@ type MqttContextValue = {
   alarms: Alarm[];
   alarmsUpdatedAt: number | null;
   requestAlarms: () => void;
-  addAlarm: (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean, stopMethodId: string) => void;
+  addAlarm: (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean, stopMethodId: string, isNfcEnabled: boolean) => void;
   editAlarm: (
     id: string,
     time: string,
     daysOfWeek: DayOfWeek[],
     isEnabled: boolean,
     stopMethodId: string,
+    isNfcEnabled: boolean,
   ) => void;
   deleteAlarm: (id: string) => void;
   sendPauseCommand: (durationMs: number) => void;
@@ -81,6 +82,7 @@ type MqttContextValue = {
   sendStopCommand: () => Promise<boolean>;
   ringingStatus: RingingStatus | null;
   envSeeded: boolean;
+  // isNfcEnabled: boolean;
 };
 
 const MqttContext = createContext<MqttContextValue | null>(null);
@@ -101,6 +103,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [alarmsUpdatedAt, setAlarmsUpdatedAt] = useState<number | null>(null);
   const [ringingStatus, setRingingStatus] = useState<RingingStatus | null>(null);
+  // const [isNfcEnabled, setIsNfcEnabled] = useState<boolean>(false);
   const clientRef = useRef<MqttClient | null>(null);
   const lastEdgeResponseAtRef = useRef<number | null>(null);
   const lastVisibilityReconnectAtRef = useRef(0);
@@ -346,8 +349,8 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
   }, [publishCommand]);
 
   const addAlarm = useCallback(
-    (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean, stopMethodId: string) => {
-      publishCommand(buildAddCommand(time, daysOfWeek, isEnabled, stopMethodId));
+    (time: string, daysOfWeek: DayOfWeek[], isEnabled: boolean, stopMethodId: string, isNfcEnabled: boolean) => {
+      publishCommand(buildAddCommand(time, daysOfWeek, isEnabled, stopMethodId, isNfcEnabled));
       // add はエッジ側から一覧の自動返信が来ない前提のため、直後に list を送って更新する。
       publishCommand(buildListCommand());
     },
@@ -361,8 +364,9 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
       daysOfWeek: DayOfWeek[],
       isEnabled: boolean,
       stopMethodId: string,
+      isNfcEnabled: boolean,
     ) => {
-      publishCommand(buildEditCommand(id, time, daysOfWeek, isEnabled, stopMethodId));
+      publishCommand(buildEditCommand(id, time, daysOfWeek, isEnabled, stopMethodId, isNfcEnabled));
       publishCommand(buildListCommand());
     },
     [publishCommand],
@@ -444,6 +448,7 @@ export default function MqttProvider({ children }: { children: React.ReactNode }
     sendStopCommand,
     ringingStatus,
     envSeeded,
+    // isNfcEnabled,
   };
 
   return <MqttContext.Provider value={value}>{children}</MqttContext.Provider>;
