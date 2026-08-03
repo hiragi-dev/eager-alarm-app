@@ -43,7 +43,7 @@ const RINGING_HEARTBEAT_MS = 2000;
 const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 /**
- * @typedef {{ id: string, time: string, days_of_week: string[], is_enabled: boolean, stop_method_id: string | null }} Alarm
+ * @typedef {{ id: string, time: string, days_of_week: string[], is_enabled: boolean, stop_method_id: string | null, is_nfc_enabled: boolean, is_nfc_verified: boolean }} Alarm
  */
 
 /** @type {Alarm[]} */
@@ -96,6 +96,8 @@ function publishAlarms(client) {
       days_of_week: a.days_of_week,
       is_enabled: a.is_enabled,
       stop_method_id: a.stop_method_id,
+      is_nfc_enabled: a.is_nfc_enabled,
+      is_nfc_verified: a.is_nfc_verified,
     }))
   );
   client.publish(ALARMS_TOPIC, payload, { qos: 2 }, (err) => {
@@ -117,6 +119,8 @@ function handleCommand(client, cmd) {
         days_of_week: cmd.days_of_week,
         is_enabled: cmd.is_enabled ?? true,
         stop_method_id: cmd.stop_method_id ?? null,
+        is_nfc_enabled: cmd.is_nfc_enabled,
+        is_nfc_verified: false,
       };
       alarmList.push(alarm);
       alarmList.sort((a, b) => a.time.localeCompare(b.time));
@@ -135,6 +139,8 @@ function handleCommand(client, cmd) {
         days_of_week: cmd.days_of_week ?? alarmList[idx].days_of_week,
         is_enabled: cmd.is_enabled ?? alarmList[idx].is_enabled,
         stop_method_id: cmd.stop_method_id ?? alarmList[idx].stop_method_id,
+        is_nfc_enabled: cmd.is_nfc_enabled ?? alarmList[idx].is_nfc_enabled,
+        is_nfc_verified: false,
       };
       alarmList.sort((a, b) => a.time.localeCompare(b.time));
       log(`✅ edit id=${cmd.id} time=${alarmList[idx].time} enabled=${alarmList[idx].is_enabled} stop_method_id=${alarmList[idx].stop_method_id}`);
@@ -165,16 +171,35 @@ function handleCommand(client, cmd) {
         log(`⚠ pause: 不正な duration_ms=${cmd.duration_ms}`);
         break;
       }
-      mutedUntil = new Date(Date.now() + durationMs);
-      log(
-        `😴 pause: ${durationMs}ms 停止 (muted_until=${mutedUntil.toLocaleTimeString("ja-JP", { hour12: false })})`,
-      );
+
+      if (ringing) {
+        if (ringing.is_nfc_enabled && !ringing.is_nfc_verified) {
+          console.error("pause: attempt to pause NFC unverified alarm");
+          process.exit(1);
+        }
+
+        mutedUntil = new Date(Date.now() + durationMs);
+        log(
+          `😴 pause: ${durationMs}ms 停止 (muted_until=${mutedUntil.toLocaleTimeString("ja-JP", { hour12: false })})`,
+        );
+      } else {
+        console.error("pause: tried to pause empty alarm");
+        process.exit(1);
+      }
+
       break;
     }
     case "stop": {
       // v2: アラームは削除しない。ringing状態をクリアするだけ
       if (ringing) {
+        if (ringing.is_nfc_enabled && !ringing.is_nfc_verified) {
+          console.error("pause: attempt to pause NFC unverified alarm");
+          process.exit(1);
+        }
+
         log(`🛑 stop: 鳴動中のアラーム id=${ringing.id} を停止しました（アラームは保持）`);
+        ringing.is_nfc_verified = false;
+
         ringing = null;
         mutedUntil = null;
       } else {
@@ -182,6 +207,24 @@ function handleCommand(client, cmd) {
       }
       break;
     }
+    case "verify_nfc":
+      if (ringing) {
+        if (!ringing.is_nfc_enabled) {
+          console.error("verify_nfc: you tried to verify nfc, but this alarm's nfc authentication is disabled!");
+          process.exit(1);
+        }
+
+        if (ringing.is_nfc_verified) {
+          console.warn("verify_nfc: you verified nfc twice!");
+        }
+
+        ringing.is_nfc_verified = true;
+      } else {
+        console.error("verify_nfc: attempt to verify empty alarm");
+        process.exit(1);
+      }
+
+      break;
     case "status": {
       const payload = JSON.stringify({ online: true });
       client.publish(STATUS_TOPIC, payload, { qos: 2 }, (err) => {
